@@ -1,0 +1,5 @@
+[deps]
+MultilineStrings = "1e8d2bf6-9821-4900-9a2f-4d87552df2bd"
+
+[compat]
+MultilineStrings = "=0.1.1"
