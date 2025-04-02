@@ -18,21 +18,6 @@ using Base: PkgId, isprecompiled
 using Pkg: Pkg
 using SHA: sha256
 
-# The function `Base.is_stdlib` only was created in Julia 1.12.0-DEV.1389
-is_stdlib(pkg::PkgId) = Pkg.Types.is_stdlib(pkg.uuid)
-
-function precompile_files(depot)
-    paths = String[]
-    for (root, dirs, files) in walkdir(joinpath(depot, "compiled", "v$(VERSION.major).$(VERSION.minor)"))
-        for file in files
-            if endswith(file, ".ji")
-                push!(paths, joinpath(root, file))
-            end
-        end
-    end
-    return paths
-end
-
 function compilecache_paths(env::Pkg.Types.EnvCache)
     manifest = env.manifest
     dependencies = Pkg.dependencies(env)
@@ -46,7 +31,10 @@ function compilecache_paths(env::Pkg.Types.EnvCache)
         path = Base.compilecache_path(pkg)
         !isnothing(path) && push!(paths, path)
 
+        # Extensions are not included in the dependencies list so we need to extract that
         for ext in keys(manifest[uuid].exts)
+            # The extension UUID deterministic and based upon the parent UUID and the
+            # extension name. e.g. https://github.com/JuliaLang/julia/blob/2fd6db2e2b96057dbfa15ee651958e03ca5ce0d9/base/loading.jl#L1561
             # Note: the `Base.uuid5` implementation differs from `UUIDs.uuid5`
             path = Base.compilecache_path(PkgId(Base.uuid5(pkg.uuid, ext), ext))
             !isnothing(path) && push!(paths, path)

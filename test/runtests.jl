@@ -1,105 +1,51 @@
-using JSON3: JSON3
-using Random: randstring
 using Test
 
-function cached_files(depot_cache_id; debug::Bool=false)
-    image = "read-cache:$(randstring())"
-    # Use `--no-cache` to ensure the inventory is up to date
-    build_cmd = ```
-        docker build --progress=plain -f read-cache.Dockerfile -t $image
-        --build-arg=JULIA_DEPOT_CACHE_ID=$(depot_cache_id)
-        --build-arg=INVALIDATE_READ_CACHE=$(randstring())
-        .
-        ```
-    cleanup_cmd = `docker rmi $image`
+include("utils.jl")
 
-    if !debug
-        build_cmd = pipeline(build_cmd; stdout=devnull, stderr=devnull)
-        cleanup_cmd = pipeline(cleanup_cmd; stdout=devnull, stderr=devnull)
-    end
+@testset "Docker Package Precompile" begin
+    # Out-of-the-box on Julia 1.11 the compile cache path used for a package is based upon the:
+    #
+    # - Package UUID
+    # - Active project path
+    # - System image path (`--sysimage`)
+    # - Julia binary path
+    # - Cache flags (`--pkgimages`, `--debug-info`, `--check-bounds`, `--inline`, `--optimize`)
+    # - CPU target (`--cpu-target` / `JULIA_CPU_TARGET`)
+    #
+    # The use of the active project path is problematic in Docker environments as two
+    # distinct projects may use the same project path. When that occurs Julia could use the
+    # same compile cache path resulting in cache files being unncesssarily clobbered and
+    # also causing build failures when using `sharing=shared`.
+    @testset "different package version, same depot path" begin
+        with_cache_mount(; id_prefix="julia-depot-test-") do depot_cache_id
+            @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-    run(build_cmd)
-    files = readlines(`docker run --rm $image`)
-    run(cleanup_cmd)
+            julia_project = "/julia-project"
+            build_args = ["JULIA_PROJECT" => julia_project,
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
-    return files
-end
+            # Build an image which installs MultilineStrings@0.1.1 and writes the compile
+            # cache file into the cache mount.
+            build(joinpath(@__DIR__, "a"), build_args; debug=true)
+            ji_files = get_cached_ji_files(depot_cache_id)
+            @test length(ji_files) == 1
 
-function cached_ji_files(args...; kwargs...)
-    return filter!(endswith(".ji"), cached_files(args...; kwargs...))
-end
+            # Build another image which installs MultilineStrings@1.0.0 and writes the
+            # compile cache file into the cache mount.
+            build(joinpath(@__DIR__, "b"), build_args; debug=true)
+            @test length(get_cached_ji_files(depot_cache_id)) == 2
 
-function build(context::AbstractString, depot_cache_id; debug::Bool=false)
-    # Docker doesn't support the use of symbolic links for copying files outside the
-    # context so we'll setup up temporary hardlinks
-    hardlink_files = [
-        joinpath(@__DIR__, "..", "pkg-precompile.jl"),
-    ]
-    for src in hardlink_files
-        dst = joinpath(context, basename(src))
-        run(`ln $src $dst`)
-    end
+            # The generated compile cache path is deterministic. We test this by creating a
+            # separate cache mount.
+            with_cache_mount(; id_prefix="julia-depot-test-new-") do new_depot_cache_id
+                build_args = ["JULIA_PROJECT" => julia_project,
+                              "JULIA_DEPOT_CACHE_ID" => new_depot_cache_id]
 
-    build_cmd = ```
-        docker build --progress=plain -f Dockerfile
-        --build-arg=JULIA_DEPOT_CACHE_ID=$(depot_cache_id)
-        --build-arg=INVALIDATE_PRECOMPILE=$(randstring())
-        $context
-        ```
-
-    if !debug
-        build_cmd = pipeline(build_cmd; stdout=devnull, stderr=devnull)
-    end
-
-    try
-        run(build_cmd)
-    finally
-        for src in hardlink_files
-            rm(joinpath(context, basename(src)))
+                build(joinpath(@__DIR__, "a"), build_args; debug=true)
+                new_ji_files = get_cached_ji_files(new_depot_cache_id)
+                @test length(new_ji_files) == 1
+                @test new_ji_files == ji_files
+            end
         end
     end
-end
-
-# Delete Docker build cache entrie based upon the user specified cache mount ID. Equivalent
-# to the following CLI command:
-# docker builder prune --filter id="$(docker system df -v --format json | jq -r --arg id "$cache_mount_id" '.BuildCache[] | select(.CacheType == "exec.cachemount" and (.Description | endswith("with id \"/" + $id + "\""))).ID')"
-function delete_cache_mount(cache_mount_id)
-    json = JSON3.read(`docker system df --verbose --format json`)
-    build_caches = filter(json.BuildCache) do bc
-        bc.CacheType == "exec.cachemount" && endswith(bc.Description, "with id \"/$cache_mount_id\"")
-    end
-
-    # When using `sharing=private` concurrent access to the same "cache mount ID" results in
-    # multiple caches being created using the same "cache mount ID". The build cache ID
-    # appears to be randomly generated.
-    for bc in build_caches
-        run(pipeline(`docker builder prune --force --filter id=$(bc.ID)`; stdout=devnull))
-    end
-
-    return nothing
-end
-
-function mktemp_cache_mount(body; prefix="julia-container-scripts-")
-    cache_mount_id = "$(prefix)-$(randstring())"
-    try
-        body(cache_mount_id)
-    finally
-        delete_cache_mount(cache_mount_id)
-    end
-end
-
-
-
-
-mktemp_cache_mount(; prefix="julia-depot-test-") do depot_cache_id
-    @test length(cached_ji_files(depot_cache_id)) == 0
-
-    build("a", depot_cache_id)
-    @test length(cached_ji_files(depot_cache_id)) == 1
-
-    build("b", depot_cache_id)
-    @test length(cached_ji_files(depot_cache_id)) == 2
-
-    build("a", depot_cache_id)
-    @test length(cached_ji_files(depot_cache_id)) == 2
 end
