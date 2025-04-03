@@ -2,25 +2,24 @@ using JSON3: JSON3
 using Random: randstring
 
 function get_cached_files(depot_cache_id; debug::Bool=false)
-    image = "read-cache:$(randstring())"
     dockerfile = joinpath(@__DIR__, "read-cache.Dockerfile")
     context = @__DIR__
     build_cmd = ```
-        docker build --progress=plain -f $dockerfile -t $image
+        docker build -f $dockerfile
         --build-arg=JULIA_DEPOT_CACHE_ID=$(depot_cache_id)
         --build-arg=INVALIDATE_READ_CACHE=$(randstring())
         $context
         ```
-    cleanup_cmd = `docker rmi $image`
 
-    if !debug
-        build_cmd = pipeline(build_cmd; stdout=devnull, stderr=devnull)
-        cleanup_cmd = pipeline(cleanup_cmd; stdout=devnull, stderr=devnull)
+    if debug
+        cmd = `$build_cmd --progress=plain`
+        println(cmd)
+        run(cmd)
     end
 
-    run(build_cmd)
-    files = readlines(`docker run --rm $image`)
-    run(cleanup_cmd)
+    digest = readchomp(`$build_cmd --quiet`)
+    files = readlines(`docker run --rm $digest`)
+    run(pipeline(`docker rmi $digest`; stdout=devnull))
 
     return files
 end
@@ -37,7 +36,7 @@ function build(context::AbstractString, build_args::AbstractVector{Pair{String,S
     ]
     for src in hardlink_files
         dst = joinpath(context, basename(src))
-        run(`ln $src $dst`)
+        run(`ln -f $src $dst`)
     end
 
     dockerfile = joinpath(@__DIR__, "Dockerfile")
