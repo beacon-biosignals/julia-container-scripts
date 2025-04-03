@@ -41,20 +41,19 @@ function build(context::AbstractString, build_args::AbstractVector{Pair{String,S
 
     dockerfile = joinpath(@__DIR__, "Dockerfile")
     build_cmd = ```
-        docker build --progress=plain -f $dockerfile
+        docker build -f $dockerfile
         --build-arg=INVALIDATE_PRECOMPILE=$(randstring())
         $(["--build-arg=$k=$v" for (k, v) in build_args])
         $context
         ```
 
-    if debug
-        println(build_cmd)
-    else
-        build_cmd = pipeline(build_cmd; stdout=devnull, stderr=devnull)
-    end
-
     try
-        run(build_cmd)
+        if debug
+            println(build_cmd)
+            run(`$build_cmd --progress=plain`)
+        end
+
+        readchomp(`$build_cmd --quiet`)
     finally
         for src in hardlink_files
             rm(joinpath(context, basename(src)))
@@ -88,4 +87,25 @@ function with_cache_mount(body; id_prefix="julia-container-scripts-")
     finally
         delete_cache_mount(cache_mount_id)
     end
+end
+
+function pkg_details(image::AbstractString, pkg::Base.PkgId)
+    script = quote
+        using Base: PkgId
+        using Pkg: Pkg
+        using UUIDs: UUID
+        pkg = $pkg
+        println(Pkg.Types.is_stdlib(pkg.uuid))
+        println(Base.in_sysimage(pkg))
+        println(Base.isprecompiled(pkg))
+        println(Base.compilecache_path(pkg))
+    end
+
+    lines = readlines(`docker run --rm $image -e $script`)
+    is_stdlib = parse(Bool, lines[1])
+    in_sysimage = parse(Bool, lines[2])
+    is_precompiled = parse(Bool, lines[3])
+    ji_path = lines[4] == "nothing" ? nothing : lines[4]
+
+    return (; is_stdlib, in_sysimage, is_precompiled, ji_path)
 end

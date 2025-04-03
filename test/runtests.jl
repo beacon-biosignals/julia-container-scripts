@@ -1,35 +1,74 @@
+using Base: PkgId, is_stdlib
 using Test
+using UUIDs: UUID
 
 include("utils.jl")
 
 @testset "Docker Package Precompile" begin
-    @testset "stdlib without precompile" begin
-        with_cache_mount(; id_prefix="julia-depot-stdlib-without-precompile-") do depot_cache_id
+    # Standard libraries which aren't included in the sysimage usually contain
+    # precompilation which are shipped with Julia.
+    @testset "stdlib with bundled precompile" begin
+        with_cache_mount(; id_prefix="julia-depot-stdlib-bundled-precompile-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
             build_args = ["JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
-            # Unicode is a stdlib which does not create a `.ji` file.
-            build(joinpath(@__DIR__, "stdlib-without-precompile"), build_args)
+            # Unicode is a stdlib which does not typically create a `.ji` file.
+            image = build(joinpath(@__DIR__, "stdlib-bundled-precompile"), build_args)
             ji_files = get_cached_ji_files(depot_cache_id)
             @test length(ji_files) == 0
+
+            metadata = pkg_details(image, Base.identify_package("Unicode"))
+            @test metadata.is_stdlib
+            @test !metadata.in_sysimage
+            @test metadata.is_precompiled
+            @test startswith(metadata.ji_path, "/usr/local/julia/share/julia/compiled")
         end
     end
 
-    @testset "stdlib with precompile" begin
-        with_cache_mount(; id_prefix="julia-depot-stdlib-with-precompile-") do depot_cache_id
+    @testset "stdlib user precompile" begin
+        with_cache_mount(; id_prefix="julia-depot-stdlib-user-precompile-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
             build_args = ["JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
             # SuiteSparse is a stdlib that also creates a `.ji` file.
-            build(joinpath(@__DIR__, "stdlib-with-precompile"), build_args)
+            image = build(joinpath(@__DIR__, "stdlib-user-precompile"), build_args)
             ji_files = get_cached_ji_files(depot_cache_id)
             @test length(ji_files) == 1
-            @test basename(dirname(ji_files[1])) == "SuiteSparse"
+            @test "SuiteSparse" in basename.(dirname.(ji_files))
+
+            metadata = pkg_details(image, Base.identify_package("SuiteSparse"))
+            @test metadata.is_stdlib
+            @test !metadata.in_sysimage
+            @test metadata.is_precompiled
+            @test startswith(metadata.ji_path, "/usr/local/share/julia-depot/compiled")
         end
     end
 
+    # Verifying that direct dependencies have been precompiled requires us to special case
+    # packages in the sysimage as these packages will return:
+    # `Base.isprecompiled(...) == false`.
+    @testset "stdlib in sysimage" begin
+        with_cache_mount(; id_prefix="julia-depot-stdlib-in-sysimage-") do depot_cache_id
+            @test length(get_cached_ji_files(depot_cache_id)) == 0
+
+            build_args = ["JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+
+            # SHA is usually built into the Julia system image
+            image = build(joinpath(@__DIR__, "stdlib-in-sysimage"), build_args)
+            ji_files = get_cached_ji_files(depot_cache_id)
+            @test length(ji_files) == 0
+
+            metadata = pkg_details(image, Base.identify_package("SHA"))
+            @test metadata.is_stdlib
+            @test metadata.in_sysimage
+            @test !metadata.is_precompiled
+            @test metadata.ji_path === nothing
+        end
+    end
+
+    # Details from `Pkg.dependencies` do not include extensions.
     @testset "extension" begin
         with_cache_mount(; id_prefix="julia-depot-extension-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
@@ -38,11 +77,17 @@ include("utils.jl")
 
             # Build an image which installs Compat/LinearAlgebra and the extension
             # CompatLinearAlgebraExt.
-            build(joinpath(@__DIR__, "extension"), build_args; debug=true)
+            image = build(joinpath(@__DIR__, "extension"), build_args)
             ji_files = get_cached_ji_files(depot_cache_id)
             @test length(ji_files) > 0
+            @test "CompatLinearAlgebraExt" in basename.(dirname.(ji_files))
 
-            @show ji_files
+            pkg = PkgId(UUID("dbe5ba0b-aecc-598a-a867-79051b540f49"), "CompatLinearAlgebraExt")
+            metadata = pkg_details(image, pkg)
+            @test !metadata.is_stdlib
+            @test !metadata.in_sysimage
+            @test metadata.is_precompiled
+            @test startswith(metadata.ji_path, "/usr/local/share/julia-depot/compiled")
         end
     end
 

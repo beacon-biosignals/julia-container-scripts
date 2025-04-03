@@ -14,7 +14,7 @@
 #   `sharing=locked` and alternatively `sharing=private`.
 # - Julia standard libaries sometimes utilize precompile files (i.e. SuiteSparse)
 
-using Base: PkgId, isprecompiled
+using Base: PkgId, in_sysimage, isprecompiled
 using Pkg: Pkg
 using SHA: sha256
 
@@ -144,7 +144,7 @@ for (uuid, dep) in pairs(Pkg.dependencies(env))
         # precompilation files Julia will precompile the package upon the initial loading of
         # the package. If that happens then this script logic is flawed and requires
         # updating.
-        if !isprecompiled(pkg)
+        if !isprecompiled(pkg) && !in_sysimage(pkg)
             error("Precompilation incomplete for $(pkg.name)")
         end
 
