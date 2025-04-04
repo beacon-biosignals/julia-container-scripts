@@ -1,5 +1,11 @@
 using JSON3: JSON3
+using Logging: Logging
 using Random: randstring
+
+
+function docker_debug()
+    return Logging.min_enabled_level(Logging.global_logger()) == Logging.Debug
+end
 
 function get_cached_files(depot_cache_id; debug::Bool=false)
     dockerfile = joinpath(@__DIR__, "read-cache.Dockerfile")
@@ -28,7 +34,9 @@ function get_cached_ji_files(args...; kwargs...)
     return filter!(endswith(".ji"), get_cached_files(args...; kwargs...))
 end
 
-function build(context::AbstractString, build_args::AbstractVector{Pair{String,String}}=[]; debug::Bool=false)
+function build(context::AbstractString, build_args::AbstractVector{Pair{String,String}}=[];
+               target::Union{AbstractString,Nothing}=nothing,
+               debug::Bool=docker_debug())
     # Docker doesn't support the use of symbolic links for copying files outside the
     # context so we'll setup up temporary hardlinks
     hardlink_files = [
@@ -39,15 +47,20 @@ function build(context::AbstractString, build_args::AbstractVector{Pair{String,S
         run(`ln -f $src $dst`)
     end
 
+    flags = String[]
+    !isnothing(target) && push!(flags, "--target=$target")
+
+
     dockerfile = joinpath(@__DIR__, "Dockerfile")
     build_cmd = ```
         docker build -f $dockerfile
+        $flags
         --build-arg=INVALIDATE_PRECOMPILE=$(randstring())
         $(["--build-arg=$k=$v" for (k, v) in build_args])
         $context
         ```
 
-    try
+    digest = try
         if debug
             println(build_cmd)
             run(`$build_cmd --progress=plain`)
@@ -59,6 +72,9 @@ function build(context::AbstractString, build_args::AbstractVector{Pair{String,S
             rm(joinpath(context, basename(src)))
         end
     end
+
+    @debug "Built image with digest: $digest"
+    return digest
 end
 
 # Delete Docker build cache entrie based upon the user specified cache mount ID. Equivalent

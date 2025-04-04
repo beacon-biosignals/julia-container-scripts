@@ -60,7 +60,7 @@ ARG JULIA_DEPOT_CACHE_TARGET="/mnt/julia-depot"
 
 # Pass in a random string as a build-arg to force precompilation to run on every Docker
 # build (e.g. `--build-arg=INVALIDATE_PRECOMPILE=$(openssl rand -hex 20)`).
-ARG INVALIDATE_PRECOMPILE=
+ARG INVALIDATE_PRECOMPILE=""
 RUN echo "$INVALIDATE_PRECOMPILE"
 
 COPY pkg-precompile.jl /usr/local/bin
@@ -69,4 +69,19 @@ RUN --mount=type=cache,id=${JULIA_DEPOT_CACHE_ID},sharing=shared,target=${JULIA_
     JULIA_DEBUG=pkg-precompile pkg-precompile.jl "${JULIA_DEPOT_CACHE_TARGET}" && \
     find "${JULIA_DEPOT_CACHE_TARGET}" -name "*.ji" -type f | sort
 
+FROM julia AS user
+
 USER ${USER}
+
+# Ensure the user can successfully load all Julia direct dependencies. Failures here are
+# typically due to the package's `__init__` function attempting to write content into the
+# Julia depot.
+#
+# Purposefully avoiding using `Pkg.dependencies` as that function attempts to create a
+# `DEPOT/logs/manifest_usage.toml.pid` which fails as the user doesn't have write access to
+# the Julia depot.
+# RUN julia -e ' \
+#         using TOML; \
+#         for direct_dep_name in keys(TOML.parsefile(Base.active_project())["deps"]) \
+#             Base.require(Main, Symbol(direct_dep_name)); \
+#         end;'
