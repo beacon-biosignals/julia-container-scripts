@@ -1,4 +1,4 @@
-using Base: PkgId, is_stdlib
+using Base: PkgId
 using Test
 using UUIDs: UUID
 
