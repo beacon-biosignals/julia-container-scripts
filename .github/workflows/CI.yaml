@@ -31,8 +31,9 @@ jobs:
             - lts  # Long-Term Stable
             - 1.10
             - 1.11
-            - 1.12
+            - 1.12.0-beta1
           project: test
+          if-missing: error
 
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }}
