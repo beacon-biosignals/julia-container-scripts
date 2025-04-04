@@ -29,7 +29,9 @@ jobs:
           versions: |
             - min  # Oldest supported version
             - lts  # Long-Term Stable
-            - 1    # Latest release
+            - 1.10
+            - 1.11
+            - 1.12
           project: test
 
   test:
