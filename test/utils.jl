@@ -36,7 +36,7 @@ end
 
 function build(context::AbstractString, build_args::AbstractVector{Pair{String,String}}=[];
                target::Union{AbstractString,Nothing}=nothing,
-               debug::Bool=docker_debug())
+               debug::Bool=true)
     # Docker doesn't support the use of symbolic links for copying files outside the
     # context so we'll setup up temporary hardlinks
     hardlink_files = [

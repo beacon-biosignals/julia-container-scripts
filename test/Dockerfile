@@ -52,7 +52,7 @@ COPY Project.toml Manifest.toml ${JULIA_PROJECT}/
 # Instantiate the Julia project environment and avoid precompiling. Ensure we perform a
 # registry update here as changes to the Project.toml/Manifest.toml does not invalidate the
 # Docker layer which added the registry.
-RUN julia --color=yes -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.build()'
+RUN julia --color=yes -e 'using Pkg; Pkg.Registry.update(); Pkg.resolve(); Pkg.instantiate(); Pkg.build()'
 
 # Allow passing in a unique cache mount ID to support build concurrency.
 ARG JULIA_DEPOT_CACHE_ID="julia-depot"
@@ -68,6 +68,12 @@ RUN --mount=type=cache,id=${JULIA_DEPOT_CACHE_ID},sharing=shared,target=${JULIA_
     # curl -fsSL https://raw.githubusercontent.com/beacon-biosignals/julia-container-scripts/refs/tags/v1/pkg-precompile.jl | JULIA_DEBUG=pkg-precompile julia
     JULIA_DEBUG=pkg-precompile pkg-precompile.jl "${JULIA_DEPOT_CACHE_TARGET}" && \
     find "${JULIA_DEPOT_CACHE_TARGET}" -name "*.ji" -type f | sort
+
+FROM julia AS relocate-depot
+
+# In Julia versions before 1.11 moving the depot would result in precompilation files being invalidated
+ENV JULIA_DEPOT_PATH="/usr/local/share/julia-depot-alt:"
+RUN mv /usr/local/share/julia-depot /usr/local/share/julia-depot-alt
 
 FROM julia AS user
 

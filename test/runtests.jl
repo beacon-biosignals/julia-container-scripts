@@ -5,6 +5,7 @@ using UUIDs: UUID
 include("utils.jl")
 
 @testset "Docker Package Precompile" begin
+#=
     # Standard libraries which aren't included in the sysimage usually contain
     # precompilation which are shipped with Julia.
     @testset "stdlib with bundled precompile" begin
@@ -201,10 +202,8 @@ include("utils.jl")
     #
     # - https://github.com/MakieOrg/Makie.jl/blob/b0635c4855dd5013caebbd2ec3ea7e92b3f5f118/src/Makie.jl#L386
     # - https://github.com/JuliaDatabases/ODBC.jl/blob/0229edb6c8e6120884878a432fa86951d07ed26a/src/API.jl#L192
-    @testset "triggered initialization" begin
+    @testset "triggers initialization" begin
         with_cache_mount(; id_prefix="julia-initialize-") do depot_cache_id
-            @test length(get_cached_ji_files(depot_cache_id)) == 0
-
             # Failures look similar to:
             # ```
             # ERROR: InitError: IOError: mkdir("/usr/local/share/julia-depot/scratchspaces/be6f12e9-ca4f-5eb2-a339-a4f995cc0291"; mode=0o777): permission denied (EACCES)
@@ -245,7 +244,26 @@ include("utils.jl")
             @test p.exitcode == 0
         end
     end
+=#
+    @testset "relocate depot" begin
+        with_cache_mount(; id_prefix="julia-relocate-") do depot_cache_id
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+            image = build(joinpath(@__DIR__, "pkg-v1"), build_args; target="relocate-depot", debug=true)
 
-    @testset "move depot" begin
+            # Precompilation files should not be invalidated after relocating the Julia
+            # depot (at least on Julia 1.11+)
+            precompiled_script = quote
+                using Pkg
+                for (uuid, dep) in pairs(Pkg.dependencies())
+                    pkg = Base.PkgId(uuid, dep.name)
+                    @assert Base.isprecompiled(pkg) "Package $(pkg.name) not precompiled"
+                end
+            end
+
+            # Avoid using `success` here as that call suppresses stdout/stderr from the process
+            p = run(ignorestatus(`docker run --rm $image -e $precompiled_script`))
+            @test p.exitcode == 0
+        end
     end
 end

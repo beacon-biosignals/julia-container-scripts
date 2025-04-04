@@ -18,6 +18,59 @@ using Base: PkgId, in_sysimage, isprecompiled
 using Pkg: Pkg
 using SHA: sha256
 
+# https://github.com/JuliaLang/julia/pull/53906 (e9d25ca09382b0f67a4c7770cba08bff3db3cb38)
+if VERSION >= v"1.11.0-alpha1.76"
+    compilecache_path = Base.compilecache_path
+else
+    using Base: StaleCacheKey, find_all_in_cache_path, stale_cachefile
+
+    # Adapted from Julia's 1.10.0 version of `isprecompiled`.
+    function compilecache_path(pkg::PkgId;
+            ignore_loaded::Bool=false,
+            stale_cache::Dict{StaleCacheKey,Bool}=Dict{StaleCacheKey, Bool}(),
+            cachepaths::Vector{String}=Base.find_all_in_cache_path(pkg),
+            sourcepath::Union{String,Nothing}=Base.locate_package(pkg)
+        )
+        path = nothing
+        isnothing(sourcepath) && error("Cannot locate source for $(repr("text/plain", pkg))")
+        for path_to_try in cachepaths
+            staledeps = stale_cachefile(sourcepath, path_to_try, ignore_loaded = true)
+            if staledeps === true
+                continue
+            end
+            staledeps, _ = staledeps::Tuple{Vector{Any}, Union{Nothing, String}}
+            # finish checking staledeps module graph
+            for i in 1:length(staledeps)
+                dep = staledeps[i]
+                dep isa Module && continue
+                modpath, modkey, modbuild_id = dep::Tuple{String, PkgId, UInt128}
+                modpaths = find_all_in_cache_path(modkey)
+                for modpath_to_try in modpaths::Vector{String}
+                    stale_cache_key = (modkey, modbuild_id, modpath, modpath_to_try)::StaleCacheKey
+                    if get!(() -> stale_cachefile(stale_cache_key...; ignore_loaded) === true,
+                            stale_cache, stale_cache_key)
+                        continue
+                    end
+                    @goto check_next_dep
+                end
+                @goto check_next_path
+                @label check_next_dep
+            end
+            try
+                # update timestamp of precompilation file so that it is the first to be tried by code loading
+                touch(path_to_try)
+            catch ex
+                # file might be read-only and then we fail to update timestamp, which is fine
+                ex isa IOError || rethrow()
+            end
+            path = path_to_try
+            break
+            @label check_next_path
+        end
+        return path
+    end
+end
+
 function compilecache_paths(env::Pkg.Types.EnvCache)
     manifest = env.manifest
     dependencies = Pkg.dependencies(env)
@@ -28,7 +81,7 @@ function compilecache_paths(env::Pkg.Types.EnvCache)
 
         # Packages must include there UUID to provide an accurate entry prefix and slug.
         # The function will return `nothing` when a precompilation file is not present.
-        path = Base.compilecache_path(pkg)
+        path = compilecache_path(pkg)
         !isnothing(path) && push!(paths, path)
 
         # Extensions are not included in the dependencies list so we need to extract that
@@ -36,7 +89,7 @@ function compilecache_paths(env::Pkg.Types.EnvCache)
             # The extension UUID deterministic and based upon the parent UUID and the
             # extension name. e.g. https://github.com/JuliaLang/julia/blob/2fd6db2e2b96057dbfa15ee651958e03ca5ce0d9/base/loading.jl#L1561
             # Note: the `Base.uuid5` implementation differs from `UUIDs.uuid5`
-            path = Base.compilecache_path(PkgId(Base.uuid5(pkg.uuid, ext), ext))
+            path = compilecache_path(PkgId(Base.uuid5(pkg.uuid, ext), ext))
             !isnothing(path) && push!(paths, path)
         end
     end
