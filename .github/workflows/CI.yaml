@@ -31,7 +31,7 @@ jobs:
             - lts  # Long-Term Stable
             - 1.10
             - 1.11
-            - 1.12-nightly
+            # - 1.12-nightly # Docker image for 1.12 isn't quite out yet
           project: test
           if-missing: error
 
