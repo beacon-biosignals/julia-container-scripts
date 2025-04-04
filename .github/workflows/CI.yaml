@@ -48,5 +48,10 @@ jobs:
         with:
           version: ${{ matrix.version }}
       - uses: julia-actions/cache@v1
+      - name: Instantiate
+        shell: julia --color=yes --project=test {0}
+        run: |
+          using Pkg
+          Pkg.instantiate()
       - name: Test
         run: julia --color=yes --project=test test/runtests.jl
