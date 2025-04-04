@@ -14,6 +14,11 @@
 #   `sharing=locked` and alternatively `sharing=private`.
 # - Julia standard libaries sometimes utilize precompile files (i.e. SuiteSparse)
 
+# https://github.com/JuliaLang/julia/pull/50218 (f6f35533f237d55e881276428bef2f091f9cae5b)
+if VERSION < v"1.10.0-DEV.1604"
+    error("Script $(basename(@__FILE__())) is only supported on Julia 1.10+")
+end
+
 using Base: PkgId, in_sysimage, isprecompiled
 using Pkg: Pkg
 using SHA: sha256
@@ -24,7 +29,7 @@ if VERSION >= v"1.11.0-alpha1.76"
 else
     using Base: StaleCacheKey, find_all_in_cache_path, stale_cachefile
 
-    # Adapted from Julia's 1.10.0 version of `isprecompiled`.
+    # Adapted from Julia's 1.10.0 version of `isprecompiled` and PR #53906.
     function compilecache_path(pkg::PkgId;
             ignore_loaded::Bool=false,
             stale_cache::Dict{StaleCacheKey,Bool}=Dict{StaleCacheKey, Bool}(),

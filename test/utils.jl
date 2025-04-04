@@ -118,7 +118,7 @@ function pkg_details(image::AbstractString, pkg::Base.PkgId)
             println(Base.compilecache_path(pkg))
         else
             paths = Base.find_all_in_cache_path(pkg)
-            println(isempty(paths) ? nothing : only(paths))
+            println(isempty(paths) ? nothing : first(paths))
         end
     end
 

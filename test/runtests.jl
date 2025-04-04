@@ -5,35 +5,6 @@ using UUIDs: UUID
 include("utils.jl")
 
 @testset "Docker Package Precompile" begin
-    # Standard libraries which aren't included in the sysimage usually contain
-    # precompilation which are shipped with Julia.
-    @testset "stdlib with bundled precompile" begin
-        with_cache_mount(; id_prefix="julia-depot-stdlib-bundled-precompile-") do depot_cache_id
-            @test length(get_cached_ji_files(depot_cache_id)) == 0
-
-            build_args = ["JULIA_VERSION" => string(VERSION),
-                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
-
-            # Unicode is a stdlib which does not typically create a `.ji` file.
-            image = build(joinpath(@__DIR__, "stdlib-bundled-precompile"), build_args)
-            ji_files = get_cached_ji_files(depot_cache_id)
-            @test length(ji_files) == 0
-
-            metadata = pkg_details(image, Base.identify_package("Unicode"))
-            if VERSION >= v"1.11"
-                @test metadata.is_stdlib
-                @test !metadata.in_sysimage
-                @test metadata.is_precompiled
-                @test startswith(metadata.ji_path, "/usr/local/julia/share/julia/compiled")
-            else
-                @test metadata.is_stdlib
-                @test metadata.in_sysimage
-                @test !metadata.is_precompiled
-                @test metadata.ji_path === nothing
-            end
-        end
-    end
-
     @testset "stdlib user precompile" begin
         with_cache_mount(; id_prefix="julia-depot-stdlib-user-precompile-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
@@ -75,6 +46,36 @@ include("utils.jl")
             @test metadata.in_sysimage
             @test !metadata.is_precompiled
             @test metadata.ji_path === nothing
+        end
+    end
+
+    # Standard libraries which aren't included in the sysimage and do not generate a
+    # precompilation file in the Julia depot. To see which stdlibs use bundled
+    # precompilation files you can run:
+    # ```
+    # docker run -it --rm julia:1.10.4 -e '
+    #     using Pkg
+    #     stdlib_dir = joinpath(Sys.BINDIR, "..", "share", "julia", "stdlib", "v$(VERSION.major).$(VERSION.minor)")
+    #     stdlibs = Base.identify_package.(readdir(stdlib_dir))
+    #     Pkg.add([stdlib.name for stdlib in stdlibs])
+    #     println.(filter(stdlib -> !Base.in_sysimage(stdlib) && !any(startswith(DEPOT_PATH[1]), Base.find_all_in_cache_path(stdlib)), stdlibs))'
+    # ```
+    @testset "stdlib with bundled precompile" begin
+        with_cache_mount(; id_prefix="julia-depot-stdlib-bundled-precompile-") do depot_cache_id
+            @test length(get_cached_ji_files(depot_cache_id)) == 0
+
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+
+            image = build(joinpath(@__DIR__, "stdlib-bundled-precompile"), build_args)
+            ji_files = get_cached_ji_files(depot_cache_id)
+            @test length(ji_files) == 0
+
+            metadata = pkg_details(image, Base.identify_package("Distributed"))
+            @test metadata.is_stdlib
+            @test !metadata.in_sysimage
+            @test metadata.is_precompiled
+            @test startswith(metadata.ji_path, "/usr/local/julia/share/julia/compiled")
         end
     end
 
