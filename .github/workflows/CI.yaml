@@ -35,6 +35,11 @@ jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }}
     needs: version
+    # These permissions are needed to:
+    # - Delete old caches: https://github.com/julia-actions/cache#usage
+    permissions:
+      actions: write
+      contents: read
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
