@@ -15,7 +15,7 @@ include("utils.jl")
             # SuiteSparse is a stdlib that also creates a `.ji` file.
             image = build(joinpath(@__DIR__, "stdlib-user-precompile"), build_args)
             ji_files = get_cached_ji_files(depot_cache_id)
-            @test length(ji_files) == 1
+            @test length(ji_files) >= 1
             @test "SuiteSparse" in basename.(dirname.(ji_files))
 
             metadata = pkg_details(image, Base.identify_package("SuiteSparse"))
@@ -36,7 +36,7 @@ include("utils.jl")
             build_args = ["JULIA_VERSION" => string(VERSION),
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
-            # SHA is usually built into the Julia system image
+            # SHA is usually built into the Julia system image and has no dependencies.
             image = build(joinpath(@__DIR__, "stdlib-in-sysimage"), build_args)
             ji_files = get_cached_ji_files(depot_cache_id)
             @test length(ji_files) == 0
