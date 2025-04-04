@@ -30,6 +30,7 @@ jobs:
             - min  # Oldest supported version
             - lts  # Long-Term Stable
             - 1    # Latest release
+          project: test
 
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }}
