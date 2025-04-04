@@ -59,6 +59,7 @@ function build(context::AbstractString, build_args::AbstractVector{Pair{String,S
         $(["--build-arg=$k=$v" for (k, v) in build_args])
         $context
         ```
+    build_env = addenv(build_cmd, "DOCKER_CLI_HINTS" => "false")
 
     digest = try
         if debug
@@ -107,14 +108,18 @@ end
 
 function pkg_details(image::AbstractString, pkg::Base.PkgId)
     script = quote
-        using Base: PkgId
         using Pkg: Pkg
         using UUIDs: UUID
-        pkg = $pkg
+        pkg = Base.PkgId($(pkg.uuid), $(pkg.name))
         println(Pkg.Types.is_stdlib(pkg.uuid))
         println(Base.in_sysimage(pkg))
         println(Base.isprecompiled(pkg))
-        println(Base.compilecache_path(pkg))
+        if VERSION >= v"1.11"
+            println(Base.compilecache_path(pkg))
+        else
+            paths = Base.find_all_in_cache_path(pkg)
+            println(isempty(paths) ? nothing : only(paths))
+        end
     end
 
     lines = readlines(`docker run --rm $image -e $script`)

@@ -47,12 +47,12 @@ RUN julia --color=yes -e 'using Pkg; Pkg.Registry.add("General")'
 # Limit Docker layer invalidation by only copying the Project.toml/Manifest.toml files.
 ARG JULIA_PROJECT="/project"
 ENV JULIA_PROJECT="${JULIA_PROJECT}"
-COPY Project.toml Manifest.toml ${JULIA_PROJECT}/
+COPY Project.toml *Manifest.toml ${JULIA_PROJECT}/
 
 # Instantiate the Julia project environment and avoid precompiling. Ensure we perform a
 # registry update here as changes to the Project.toml/Manifest.toml does not invalidate the
 # Docker layer which added the registry.
-RUN julia --color=yes -e 'using Pkg; Pkg.Registry.update(); Pkg.resolve(); Pkg.instantiate(); Pkg.build()'
+RUN julia --color=yes -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.build()'
 
 # Allow passing in a unique cache mount ID to support build concurrency.
 ARG JULIA_DEPOT_CACHE_ID="julia-depot"

@@ -5,14 +5,14 @@ using UUIDs: UUID
 include("utils.jl")
 
 @testset "Docker Package Precompile" begin
-#=
     # Standard libraries which aren't included in the sysimage usually contain
     # precompilation which are shipped with Julia.
     @testset "stdlib with bundled precompile" begin
         with_cache_mount(; id_prefix="julia-depot-stdlib-bundled-precompile-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            build_args = ["JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
             # Unicode is a stdlib which does not typically create a `.ji` file.
             image = build(joinpath(@__DIR__, "stdlib-bundled-precompile"), build_args)
@@ -20,10 +20,17 @@ include("utils.jl")
             @test length(ji_files) == 0
 
             metadata = pkg_details(image, Base.identify_package("Unicode"))
-            @test metadata.is_stdlib
-            @test !metadata.in_sysimage
-            @test metadata.is_precompiled
-            @test startswith(metadata.ji_path, "/usr/local/julia/share/julia/compiled")
+            if VERSION >= v"1.11"
+                @test metadata.is_stdlib
+                @test !metadata.in_sysimage
+                @test metadata.is_precompiled
+                @test startswith(metadata.ji_path, "/usr/local/julia/share/julia/compiled")
+            else
+                @test metadata.is_stdlib
+                @test metadata.in_sysimage
+                @test !metadata.is_precompiled
+                @test metadata.ji_path === nothing
+            end
         end
     end
 
@@ -31,7 +38,8 @@ include("utils.jl")
         with_cache_mount(; id_prefix="julia-depot-stdlib-user-precompile-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            build_args = ["JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
             # SuiteSparse is a stdlib that also creates a `.ji` file.
             image = build(joinpath(@__DIR__, "stdlib-user-precompile"), build_args)
@@ -54,7 +62,8 @@ include("utils.jl")
         with_cache_mount(; id_prefix="julia-depot-stdlib-in-sysimage-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            build_args = ["JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
             # SHA is usually built into the Julia system image
             image = build(joinpath(@__DIR__, "stdlib-in-sysimage"), build_args)
@@ -74,7 +83,8 @@ include("utils.jl")
         with_cache_mount(; id_prefix="julia-depot-extension-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            build_args = ["JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
             # Build an image which installs Compat/LinearAlgebra and the extension
             # CompatLinearAlgebraExt.
@@ -110,7 +120,8 @@ include("utils.jl")
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
             julia_project = "/julia-project"
-            build_args = ["JULIA_PROJECT" => julia_project,
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_PROJECT" => julia_project,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
             # Build an image which installs MultilineStrings@0.1.1 and writes the compile
@@ -128,7 +139,8 @@ include("utils.jl")
             # creating a new cache mount and checking the name of the produced compile cache
             # path.
             with_cache_mount(; id_prefix="julia-different-pkg-alt-") do alt_depot_cache_id
-                build_args = ["JULIA_PROJECT" => julia_project,
+                build_args = ["JULIA_VERSION" => string(VERSION),
+                              "JULIA_PROJECT" => julia_project,
                               "JULIA_DEPOT_CACHE_ID" => alt_depot_cache_id]
 
                 build(joinpath(@__DIR__, "pkg-v0"), build_args)
@@ -151,7 +163,8 @@ include("utils.jl")
 
             # Build the image which will create the precomplation file based upon the
             # provided Julia project path "A".
-            build_args = ["JULIA_PROJECT" => julia_project_a,
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_PROJECT" => julia_project_a,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
             build(joinpath(@__DIR__, "pkg-v1"), build_args)
             ji_files_a1 = get_cached_ji_files(depot_cache_id)
@@ -159,7 +172,8 @@ include("utils.jl")
 
             # Build an image with Julia project path "B". Julia will noticed the existing
             # precompilation file from "A" and use that instead of creating a new one.
-            build_args = ["JULIA_PROJECT" => julia_project_b,
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_PROJECT" => julia_project_b,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
             build(joinpath(@__DIR__, "pkg-v1"), build_args)
             ji_files_b1 = get_cached_ji_files(depot_cache_id)
@@ -170,7 +184,8 @@ include("utils.jl")
                 # Build another the image which will create a new  precomplation file based
                 # upon the provided Julia project path "B". The name of the  precompilation
                 # file will differ from the one created with Julia project path "A".
-                build_args = ["JULIA_PROJECT" => julia_project_b,
+                build_args = ["JULIA_VERSION" => string(VERSION),
+                              "JULIA_PROJECT" => julia_project_b,
                               "JULIA_DEPOT_CACHE_ID" => alt_depot_cache_id]
                 build(joinpath(@__DIR__, "pkg-v1"), build_args)
                 ji_files_b2 = get_cached_ji_files(alt_depot_cache_id)
@@ -180,7 +195,8 @@ include("utils.jl")
                 # Build an image with the Julia project path "A". Julia will noticed the
                 # existing precompilation file from "B" and use that instead of creating a
                 # new one.
-                build_args = ["JULIA_PROJECT" => julia_project_a,
+                build_args = ["JULIA_VERSION" => string(VERSION),
+                              "JULIA_PROJECT" => julia_project_a,
                               "JULIA_DEPOT_CACHE_ID" => alt_depot_cache_id]
                 build(joinpath(@__DIR__, "pkg-v1"), build_args)
                 ji_files_a2 = get_cached_ji_files(alt_depot_cache_id)
@@ -208,7 +224,8 @@ include("utils.jl")
             # ```
             # ERROR: InitError: IOError: mkdir("/usr/local/share/julia-depot/scratchspaces/be6f12e9-ca4f-5eb2-a339-a4f995cc0291"; mode=0o777): permission denied (EACCES)
             # ```
-            build_args = ["JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
             image = build(joinpath(@__DIR__, "initialize"), build_args; target="user")
 
             depot = "/usr/local/share/julia-depot"
@@ -244,7 +261,7 @@ include("utils.jl")
             @test p.exitcode == 0
         end
     end
-=#
+
     @testset "relocate depot" begin
         with_cache_mount(; id_prefix="julia-relocate-") do depot_cache_id
             build_args = ["JULIA_VERSION" => string(VERSION),
@@ -263,7 +280,12 @@ include("utils.jl")
 
             # Avoid using `success` here as that call suppresses stdout/stderr from the process
             p = run(ignorestatus(`docker run --rm $image -e $precompiled_script`))
-            @test p.exitcode == 0
+
+            if VERSION >= v"1.11"
+                @test p.exitcode == 0
+            else
+                @test_broken p.exitcode == 0
+            end
         end
     end
 end

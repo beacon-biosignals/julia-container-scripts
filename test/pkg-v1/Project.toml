@@ -2,4 +2,5 @@
 MultilineStrings = "1e8d2bf6-9821-4900-9a2f-4d87552df2bd"
 
 [compat]
-MultilineStrings = "=1.0.0"
+MultilineStrings = "1.0.0"
+julia = "1.10"
