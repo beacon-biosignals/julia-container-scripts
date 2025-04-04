@@ -5,7 +5,7 @@ using UUIDs: UUID
 include("utils.jl")
 
 @testset "Docker Package Precompile" begin
-#=    # Standard libraries which aren't included in the sysimage usually contain
+    # Standard libraries which aren't included in the sysimage usually contain
     # precompilation which are shipped with Julia.
     @testset "stdlib with bundled precompile" begin
         with_cache_mount(; id_prefix="julia-depot-stdlib-bundled-precompile-") do depot_cache_id
@@ -101,7 +101,6 @@ include("utils.jl")
             @test startswith(metadata.ji_path, "/usr/local/share/julia-depot/compiled")
         end
     end
-    =#
 
     # Out-of-the-box on Julia 1.11 the compile cache path used for a package is based upon the:
     #
@@ -152,9 +151,11 @@ include("utils.jl")
         end
     end
 
-    # Julia will search for existing precompilation files which can be used even if the
-    # names differ. We rely on this functionality as without it the strategy used in
-    # `set_distinct_active_project` wouldn't work if names needed to match.
+    # Julia 1.11+ will search for existing precompilation files which can be used even if
+    # the names (Julia project) differs. We rely on this functionality to avoid unnecessary
+    # precompilation when using `set_distinct_active_project`. Julia 1.10 doesn't have this
+    # capability so we need to generate new precompilation files for each Julia project
+    # path (even without `set_distinct_active_project`).
     @testset "same package version, different project path" begin
         with_cache_mount(; id_prefix="julia-same-pkg-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
@@ -217,7 +218,7 @@ include("utils.jl")
             end
         end
     end
-#=
+
     # Ensure we load the Julia packages to trigger the first initialization of the package.
     # Executing the package's `__init__` functions can important for packages which call
     # `@get_scratch!` which will attept to create a directory under
@@ -299,5 +300,4 @@ include("utils.jl")
             end
         end
     end
-    =#
 end
