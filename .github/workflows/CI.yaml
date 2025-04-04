@@ -34,6 +34,7 @@ jobs:
 
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }}
+    needs: version
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
