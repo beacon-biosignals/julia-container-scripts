@@ -160,11 +160,19 @@ within_depot(path::AbstractString) = startswith(path, DEPOT_PATH[1])
 cache_depot = ARGS[1]
 final_depot = length(ARGS) >= 2 ? ARGS[2] : DEPOT_PATH[1]
 
-env = Pkg.Operations.EnvCache()
-package_specs = [PackageSpec(; name=dep.name, uuid)
-                 for (uuid, dep) in Pkg.dependencies(env)
-                 if !in_sysimage(PkgId(uuid, dep.name))]
-@show package_specs
+context = Pkg.Types.Context()
+@show context.env.project.name
+
+if !isnothing(context.env.project.name)
+    project_name = context.env.project.name
+    project_file = Base.active_project()
+
+    if !isfile(joinpath(dirname(project_file), "src", "$project_name.jl"))
+        context.env.project.name = nothing
+    end
+end
+
+@show context.env.project.name
 
 # Precompile the depot packages using a Docker cache mount as the "compiled" directory.
 # Using a cache mount allows us to perform precompilation for Julia packages once across all
@@ -179,12 +187,12 @@ mkpath(cache_compiled_dir)
 # Creating this symlink requires that the final compiled directory doesn't exist
 symlink(cache_compiled_dir, final_compiled_dir)
 
-old_cache_paths = filter!(within_depot, compilecache_paths(env))
+old_cache_paths = filter!(within_depot, compilecache_paths(context.env))
 set_distinct_active_project() do
-    Pkg.precompile(package_specs; strict=true, timing=true)
+    Pkg.precompile(context; strict=true, timing=true)
 end
 
-cache_paths = filter!(within_depot, compilecache_paths(env))
+cache_paths = filter!(within_depot, compilecache_paths(context.env))
 
 @debug begin
     paths = map(cache_paths) do p
@@ -223,7 +231,7 @@ end
 # one time package setup that occurs at runtime happens during the Docker build
 # (i.e. creating scrachspace).
 @info "Initialize dependencies..."
-for (uuid, dep) in pairs(Pkg.dependencies(env))
+for (uuid, dep) in pairs(Pkg.dependencies(context.env))
     if dep.is_direct_dep
         pkg = PkgId(uuid, dep.name)
 
