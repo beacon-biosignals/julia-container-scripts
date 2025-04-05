@@ -20,7 +20,7 @@ if VERSION < v"1.10.0-DEV.1604"
 end
 
 using Base: PkgId, in_sysimage, isprecompiled
-using Pkg: Pkg
+using Pkg: Pkg, PackageSpec
 using SHA: sha256
 
 # https://github.com/JuliaLang/julia/pull/53906 (e9d25ca09382b0f67a4c7770cba08bff3db3cb38)
@@ -131,12 +131,40 @@ function set_distinct_active_project(f)
     end
 end
 
+# function isolate(f)
+#     project_file = Base.active_project()
+#     project_toml = TOML.parsefile(project_file)
+
+#     name = get(project_toml, "name", nothing)
+#     if !isnothing(name) && !isfile(joinpath(dirname(project_file), "src", "$name.jl"))
+#         backup_project_file = project_file * ".bak"
+#         mv(project_file, backup_project_file)
+
+#         delete!(project_toml, "name")
+#         open(project_file, "w") do io
+#             TOML.print(io, project_toml)
+#         end
+
+#         try
+#             f()
+#         finally
+#             mv(backup_project_file, project_file)
+#         end
+#     else
+#         f()
+#     end
+# end
+
 within_depot(path::AbstractString) = startswith(path, DEPOT_PATH[1])
 
 cache_depot = ARGS[1]
 final_depot = length(ARGS) >= 2 ? ARGS[2] : DEPOT_PATH[1]
 
 env = Pkg.Operations.EnvCache()
+package_specs = [PackageSpec(; name=dep.name, uuid)
+                 for (uuid, dep) in Pkg.dependencies(env)
+                 if !in_sysimage(PkgId(uuid, dep.name))]
+@show package_specs
 
 # Precompile the depot packages using a Docker cache mount as the "compiled" directory.
 # Using a cache mount allows us to perform precompilation for Julia packages once across all
@@ -153,8 +181,9 @@ symlink(cache_compiled_dir, final_compiled_dir)
 
 old_cache_paths = filter!(within_depot, compilecache_paths(env))
 set_distinct_active_project() do
-    Pkg.precompile(; strict=true, timing=true)
+    Pkg.precompile(package_specs; strict=true, timing=true)
 end
+
 cache_paths = filter!(within_depot, compilecache_paths(env))
 
 @debug begin
