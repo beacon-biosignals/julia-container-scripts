@@ -76,21 +76,33 @@ else
     end
 end
 
+function packages(env::Pkg.Types.EnvCache; direct_dep::Bool=false)
+    pkgs = PkgId[]
+    for (uuid, dep) in pairs(Pkg.dependencies(env))
+        if !direct_dep || dep.is_direct_dep
+            push!(pkgs, PkgId(uuid, dep.name))
+        end
+    end
+
+    # The Project.toml may be for a Julia package.
+    if !isnothing(env.project.name) && !isnothing(env.project.uuid)
+        push!(pkgs, PkgId(env.project.uuid, env.project.name))
+    end
+
+    return pkgs
+end
+
 function compilecache_paths(env::Pkg.Types.EnvCache)
     manifest = env.manifest
-    dependencies = Pkg.dependencies(env)
-
     paths = String[]
-    for (uuid, dep) in pairs(dependencies)
-        pkg = PkgId(uuid, dep.name)
-
+    for pkg in packages(env)
         # Packages must include there UUID to provide an accurate entry prefix and slug.
         # The function will return `nothing` when a precompilation file is not present.
         path = compilecache_path(pkg)
         !isnothing(path) && push!(paths, path)
 
         # Extensions are not included in the dependencies list so we need to extract that
-        for ext in keys(manifest[uuid].exts)
+        for ext in keys(manifest[pkg.uuid].exts)
             # The extension UUID deterministic and based upon the parent UUID and the
             # extension name. e.g. https://github.com/JuliaLang/julia/blob/2fd6db2e2b96057dbfa15ee651958e03ca5ce0d9/base/loading.jl#L1561
             # Note: the `Base.uuid5` implementation differs from `UUIDs.uuid5`
@@ -232,18 +244,14 @@ end
 # one time package setup that occurs at runtime happens during the Docker build
 # (i.e. creating scrachspace).
 @info "Initialize dependencies..."
-for (uuid, dep) in pairs(Pkg.dependencies(env))
-    if dep.is_direct_dep
-        pkg = PkgId(uuid, dep.name)
-
-        # If the copy precompilation file fails to transfer all of the required
-        # precompilation files Julia will precompile the package upon the initial loading of
-        # the package. If that happens then this script logic is flawed and requires
-        # updating.
-        if !isprecompiled(pkg) && !in_sysimage(pkg)
-            error("Precompilation incomplete for $(pkg.name)")
-        end
-
-        Base.require(Main, Symbol(pkg.name))
+for pkg in packages(env; direct_dep=true)
+    # If the copy precompilation file fails to transfer all of the required
+    # precompilation files Julia will precompile the package upon the initial loading of
+    # the package. If that happens then this script logic is flawed and requires
+    # updating.
+    if !isprecompiled(pkg) && !in_sysimage(pkg)
+        error("Precompilation incomplete for $(pkg.name)")
     end
+
+    Base.require(Main, Symbol(pkg.name))
 end
