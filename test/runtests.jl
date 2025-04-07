@@ -309,11 +309,11 @@ include("utils.jl")
             build_args = ["JULIA_VERSION" => string(VERSION),
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
-            # SuiteSparse is a stdlib that also creates a `.ji` file.
             image = build(joinpath(@__DIR__, "named-project"), build_args)
             ji_files = get_cached_ji_files(depot_cache_id)
-            @test length(ji_files) == 1
+            @test length(ji_files) == 2
             @test "Demo" in basename.(dirname.(ji_files))
+            @test "Example" in basename.(dirname.(ji_files))
 
             pkg = PkgId(UUID("1738af67-c045-419c-ba62-66296a5073f6"), "Demo")
             metadata = pkg_details(image, pkg)
@@ -321,6 +321,21 @@ include("utils.jl")
             @test !metadata.in_sysimage
             @test metadata.is_precompiled
             @test startswith(metadata.ji_path, "/usr/local/share/julia-depot/compiled")
+        end
+    end
+
+    @testset "named project, no source" begin
+        with_cache_mount(; id_prefix="julia-named-project-no-src-") do depot_cache_id
+            @test length(get_cached_ji_files(depot_cache_id)) == 0
+
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+
+            image = build(joinpath(@__DIR__, "named-project-no-src"), build_args)
+            ji_files = get_cached_ji_files(depot_cache_id)
+            @test length(ji_files) == 1
+            @test !("Demo" in basename.(dirname.(ji_files)))
+            @test "Example" in basename.(dirname.(ji_files))
         end
     end
 end

@@ -76,6 +76,19 @@ else
     end
 end
 
+function root_package(env::Pkg.Types.EnvCache)
+    if !isnothing(env.project.name) && !isnothing(env.project.uuid)
+        pkg = PkgId(env.project.uuid, env.project.name)
+        source_file = joinpath(dirname(env.project_file), "src", "$(env.project.name).jl")
+        loadable = isfile(source_file)
+    else
+        pkg = nothing
+        loadable = false
+    end
+
+    return (; pkg, loadable)
+end
+
 function compilecache_paths(env::Pkg.Types.EnvCache)
     manifest = env.manifest
 
@@ -99,12 +112,11 @@ function compilecache_paths(env::Pkg.Types.EnvCache)
     end
 
     # The Project.toml may define a "root" package
-    if !isnothing(env.project.name) && !isnothing(env.project.uuid)
-        pkg = PkgId(env.project.uuid, env.project.name)
-
+    root = root_package(env)
+    if !isnothing(root.pkg) && root.loadable
         # The `compilecache_path` function doesn't work for non-dependencies (not sure why).
         # We'll add all cache paths we find to be cautious.
-        paths = Base.find_all_in_cache_path(pkg)
+        paths = Base.find_all_in_cache_path(root.pkg)
         append!(results, paths)
     end
 
@@ -188,7 +200,19 @@ symlink(cache_compiled_dir, final_compiled_dir)
 
 old_cache_paths = filter!(within_depot, compilecache_paths(env))
 set_distinct_active_project() do
-    Pkg.precompile(; strict=true, timing=true)
+    # When a root package is defined but can not be precompiled we need to explicitly state
+    # which packages we'll precompile.
+    root = root_package(env)
+    package_specs = if !isnothing(root.pkg) && !root.loadable
+        @warn "Package $(root.pkg.name) is incomplete. Excluding it from precompilation"
+        [PackageSpec(; name=dep.name, uuid)
+                     for (uuid, dep) in Pkg.dependencies(env)
+                     if !in_sysimage(PkgId(uuid, dep.name))]
+    else
+        PackageSpec[]
+    end
+
+    Pkg.precompile(package_specs; strict=true, timing=true)
 end
 
 cache_paths = filter!(within_depot, compilecache_paths(env))
@@ -258,12 +282,11 @@ end
 
 # Since `compilecache_path` doesn't work for the root package that means `isprecompiled`
 # will always return `false`.
-if !isnothing(env.project.name) && !isnothing(env.project.uuid)
-    pkg = PkgId(env.project.uuid, env.project.name)
-
-    if isempty(Base.find_all_in_cache_path(pkg))
-        error("Precompilation incomplete for $(pkg.name)")
+root = root_package(env)
+if root.loadable
+    if isempty(Base.find_all_in_cache_path(root.pkg))
+        error("Precompilation incomplete for $(root.pkg.name)")
     end
 
-    Base.require(Main, Symbol(pkg.name))
+    Base.require(Main, Symbol(root.pkg.name))
 end
