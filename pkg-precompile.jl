@@ -221,7 +221,13 @@ for cache_path in cache_paths
     # Need to copy the `.ji` file and any associated library `.so`/`.dylib`
     for f in readdir(src_cache_dir)
         if startswith(f, prefix)
-            cp(joinpath(src_cache_dir, f), joinpath(dst_cache_dir, f))
+            src_file = joinpath(src_cache_dir, f)
+            dst_file = joinpath(dst_cache_dir, f)
+
+            # Copy over missing files or modified files
+            if !isfile(dst_file) || sha256sum(src_file) != sha256sum(dst_file)
+                cp(src_file, dst_file)
+            end
         end
     end
 end
