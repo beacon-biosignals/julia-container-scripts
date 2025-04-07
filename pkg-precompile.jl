@@ -173,10 +173,12 @@ package_specs = [PackageSpec(; name=dep.name, uuid)
 
 cache_compiled_dir = joinpath(cache_depot, "compiled")
 final_compiled_dir = joinpath(final_depot, "compiled")
+backup_compiled_dir = joinpath(final_depot, "compiled.backup")
 
 mkpath(cache_compiled_dir)
 
 # Creating this symlink requires that the final compiled directory doesn't exist
+isdir(final_compiled_dir) && mv(final_compiled_dir, backup_compiled_dir)
 symlink(cache_compiled_dir, final_compiled_dir)
 
 old_cache_paths = filter!(within_depot, compilecache_paths(env))
@@ -195,8 +197,13 @@ cache_paths = filter!(within_depot, compilecache_paths(env))
     "Precompile files to transfer (new additions $num_new/$total):\n$(join(paths, '\n'))"
 end
 
+# Delete symlink and restore the old compiled directory
 rm(final_compiled_dir)
-mkdir(final_compiled_dir)
+if isdir(backup_compiled_dir)
+    mv(backup_compiled_dir, final_compiled_dir)
+else
+    mkdir(final_compiled_dir)
+end
 
 # Copy required precompilation files for packages and extensions.
 @info "Copy precompilation files into image..."
