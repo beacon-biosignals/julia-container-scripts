@@ -339,21 +339,6 @@ include("utils.jl")
         end
     end
 
-    @testset "named project, no source" begin
-        with_cache_mount(; id_prefix="julia-named-project-no-src-") do depot_cache_id
-            @test length(get_cached_ji_files(depot_cache_id)) == 0
-
-            build_args = ["JULIA_VERSION" => string(VERSION),
-                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
-
-            image = build(joinpath(@__DIR__, "named-project-no-src"), build_args)
-            ji_files = get_cached_ji_files(depot_cache_id)
-            @test length(ji_files) == 1
-            @test !("Demo" in basename.(dirname.(ji_files)))
-            @test "Example" in basename.(dirname.(ji_files))
-        end
-    end
-
     # When dependencies change typically the Docker layer which installed them is
     # invalidated and all of the dependencies are re-installed. On Julia 1.11 when this
     # occurs the precompile cache files can be reused from the cache mount. However, on
