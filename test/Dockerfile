@@ -57,7 +57,11 @@ RUN echo "$INVALIDATE_INSTANTIATE"
 # Instantiate the Julia project environment and avoid precompiling. Ensure we perform a
 # registry update here as changes to the Project.toml/Manifest.toml does not invalidate the
 # Docker layer which added the registry.
-RUN julia --color=yes -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.build()'
+ARG FIXED_PACKAGE_TIMESTAMPS="false"
+RUN julia --color=yes -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.build()' && \
+    if [ "$FIXED_PACKAGE_TIMESTAMPS" = "true" ]; then \
+        find "$(julia -e 'println(DEPOT_PATH[1])')/packages" -exec touch -m -t 197001010000 {} \; ; \
+    fi
 
 # Allow passing in a unique cache mount ID to support build concurrency.
 ARG JULIA_DEPOT_CACHE_ID="julia-depot"

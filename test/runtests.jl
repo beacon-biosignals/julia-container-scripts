@@ -363,9 +363,7 @@ include("utils.jl")
         with_cache_mount(; id_prefix="julia-reinstantiate-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            julia_project = "/julia-project"
             build_args = ["JULIA_VERSION" => string(VERSION),
-                          "JULIA_PROJECT" => julia_project,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
             # Generate the precompile file
@@ -394,6 +392,38 @@ include("utils.jl")
                 @test ji_stat2.created > ji_stat1.created
                 @test ji_stat2.modified > ji_stat1.modified
             end
+        end
+    end
+
+    # If the Dockerfile maintainer utilizes fixed modification times then re-instantiating
+    # will not invalidate the precompilation files on Julia 1.10. We recommend using:
+    #
+    # ```sh
+    # find "$(julia -e 'println(DEPOT_PATH[1])')/packages" -exec touch -m -t 197001010000 {} \;
+    # ```
+    @testset "re-instantiate workaround" begin
+        with_cache_mount(; id_prefix="julia-reinstantiate-workaround-") do depot_cache_id
+            @test length(get_cached_ji_files(depot_cache_id)) == 0
+
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id,
+                          "FIXED_PACKAGE_TIMESTAMPS" => "true"]
+
+            # Generate the precompile file
+            build(joinpath(@__DIR__, "pkg-v1"), build_args)
+            ji_stat1 = only(stat_cached_ji_files(depot_cache_id))
+
+            # Execute instantiation and precompilation again
+            push!(build_args, "INVALIDATE_INSTANTIATE" => randstring())
+            build(joinpath(@__DIR__, "pkg-v1"), build_args)
+            ji_stat2 = only(stat_cached_ji_files(depot_cache_id))
+
+            # With relocatable precompilation files the modification date of the package
+            # code doesn't matter so the precompilation file is reused.
+            @test ji_stat2.path == ji_stat1.path
+            @test ji_stat2.sha == ji_stat1.sha
+            @test ji_stat2.created == ji_stat1.created
+            @test ji_stat2.modified > ji_stat1.modified
         end
     end
 end
