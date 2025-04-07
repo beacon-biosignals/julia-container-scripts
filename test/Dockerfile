@@ -58,6 +58,9 @@ RUN julia --color=yes -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); P
 ARG JULIA_DEPOT_CACHE_ID="julia-depot"
 ARG JULIA_DEPOT_CACHE_TARGET="/mnt/julia-depot"
 
+# Copy package source files before precompilation (if any)
+COPY *src ${JULIA_PROJECT}/src/
+
 # Pass in a random string as a build-arg to force precompilation to run on every Docker
 # build (e.g. `--build-arg=INVALIDATE_PRECOMPILE=$(openssl rand -hex 20)`).
 ARG INVALIDATE_PRECOMPILE=""

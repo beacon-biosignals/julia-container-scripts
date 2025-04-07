@@ -301,4 +301,26 @@ include("utils.jl")
             end
         end
     end
+
+    @testset "named project" begin
+        with_cache_mount(; id_prefix="julia-named-project-") do depot_cache_id
+            @test length(get_cached_ji_files(depot_cache_id)) == 0
+
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+
+            # SuiteSparse is a stdlib that also creates a `.ji` file.
+            image = build(joinpath(@__DIR__, "named-project"), build_args)
+            ji_files = get_cached_ji_files(depot_cache_id)
+            @test length(ji_files) == 1
+            @test "Demo" in basename.(dirname.(ji_files))
+
+            pkg = PkgId(UUID("1738af67-c045-419c-ba62-66296a5073f6"), "Demo")
+            metadata = pkg_details(image, pkg)
+            @test !metadata.is_stdlib
+            @test !metadata.in_sysimage
+            @test metadata.is_precompiled
+            @test startswith(metadata.ji_path, "/usr/local/share/julia-depot/compiled")
+        end
+    end
 end
