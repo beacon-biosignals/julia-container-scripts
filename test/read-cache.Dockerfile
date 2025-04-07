@@ -9,6 +9,6 @@ ARG INVALIDATE_READ_CACHE=""
 RUN echo "$INVALIDATE_READ_CACHE"
 
 RUN --mount=type=cache,id=${JULIA_DEPOT_CACHE_ID},sharing=shared,target=${JULIA_DEPOT_CACHE_TARGET} \
-    find ${JULIA_DEPOT_CACHE_TARGET} -type f | tee /inventory.txt
+    find ${JULIA_DEPOT_CACHE_TARGET} -type f -name "*.ji" | xargs -I{} sh -c 'stat --format="$(sha256sum {} | cut -d" " -f1) %W %Y %n" {}' | tee /inventory.txt
 
 ENTRYPOINT ["/bin/bash", "-c", "cat /inventory.txt"]

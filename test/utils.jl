@@ -1,3 +1,4 @@
+using Dates: Dates
 using JSON3: JSON3
 using Logging: Logging
 using Random: randstring
@@ -7,7 +8,7 @@ function docker_debug()
     return Logging.min_enabled_level(Logging.global_logger()) == Logging.Debug
 end
 
-function get_cached_files(depot_cache_id; debug::Bool=false)
+function stat_cached_ji_files(depot_cache_id; debug::Bool=false)
     dockerfile = joinpath(@__DIR__, "read-cache.Dockerfile")
     context = @__DIR__
     build_cmd = ```
@@ -24,14 +25,20 @@ function get_cached_files(depot_cache_id; debug::Bool=false)
     end
 
     digest = readchomp(`$build_cmd --quiet`)
-    files = readlines(`docker run --rm $digest`)
+    lines = readlines(`docker run --rm $digest`)
     run(pipeline(`docker rmi $digest`; stdout=devnull))
 
-    return files
+    return map(lines) do line
+        sha, created_str, modified_str, path = split(line, ' '; limit=4)
+        created = Dates.unix2datetime(parse(Int64, created_str))
+        modified = Dates.unix2datetime(parse(Int64, modified_str))
+
+        return (; path, sha, created, modified)
+    end
 end
 
 function get_cached_ji_files(args...; kwargs...)
-    return filter!(endswith(".ji"), get_cached_files(args...; kwargs...))
+    return [st.path for st in stat_cached_ji_files(args...; kwargs...)]
 end
 
 function build(context::AbstractString, build_args::AbstractVector{Pair{String,String}}=[];
@@ -111,15 +118,16 @@ function pkg_details(image::AbstractString, pkg::Base.PkgId)
         using Pkg: Pkg
         using UUIDs: UUID
         pkg = Base.PkgId($(pkg.uuid), $(pkg.name))
+        ji_path = if VERSION >= v"1.11"
+            Base.compilecache_path(pkg)
+        else
+            paths = Base.find_all_in_cache_path(pkg)
+            isempty(paths) ? nothing : first(paths)
+        end
         println(Pkg.Types.is_stdlib(pkg.uuid))
         println(Base.in_sysimage(pkg))
         println(Base.isprecompiled(pkg))
-        if VERSION >= v"1.11"
-            println(Base.compilecache_path(pkg))
-        else
-            paths = Base.find_all_in_cache_path(pkg)
-            println(isempty(paths) ? nothing : first(paths))
-        end
+        println(ji_path)
     end
 
     lines = readlines(`docker run --rm $image -e $script`)

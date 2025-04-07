@@ -49,6 +49,11 @@ ARG JULIA_PROJECT="/project"
 ENV JULIA_PROJECT="${JULIA_PROJECT}"
 COPY Project.toml *Manifest.toml ${JULIA_PROJECT}/
 
+# Pass in a random string as a build-arg to force instantiation to run again during a Docker
+# build (e.g. `--build-arg=INVALIDATE_INSTANTIATE=$(openssl rand -hex 20)`).
+ARG INVALIDATE_INSTANTIATE=""
+RUN echo "$INVALIDATE_INSTANTIATE"
+
 # Instantiate the Julia project environment and avoid precompiling. Ensure we perform a
 # registry update here as changes to the Project.toml/Manifest.toml does not invalidate the
 # Docker layer which added the registry.

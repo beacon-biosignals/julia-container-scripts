@@ -338,4 +338,62 @@ include("utils.jl")
             @test "Example" in basename.(dirname.(ji_files))
         end
     end
+
+    @testset "named project, no source" begin
+        with_cache_mount(; id_prefix="julia-named-project-no-src-") do depot_cache_id
+            @test length(get_cached_ji_files(depot_cache_id)) == 0
+
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+
+            image = build(joinpath(@__DIR__, "named-project-no-src"), build_args)
+            ji_files = get_cached_ji_files(depot_cache_id)
+            @test length(ji_files) == 1
+            @test !("Demo" in basename.(dirname.(ji_files)))
+            @test "Example" in basename.(dirname.(ji_files))
+        end
+    end
+
+    # When dependencies change typically the Docker layer which installed them is
+    # invalidated and all of the dependencies are re-installed. On Julia 1.11 when this
+    # occurs the precompile cache files can be reused from the cache mount. However, on
+    # Julia 1.10 the modification timestamp changes to the packages result in the precompile
+    # cache files being invalidated for all packages.
+    @testset "re-instantiate" begin
+        with_cache_mount(; id_prefix="julia-reinstantiate-") do depot_cache_id
+            @test length(get_cached_ji_files(depot_cache_id)) == 0
+
+            julia_project = "/julia-project"
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_PROJECT" => julia_project,
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+
+            # Generate the precompile file
+            build(joinpath(@__DIR__, "pkg-v1"), build_args)
+            ji_stat1 = only(stat_cached_ji_files(depot_cache_id))
+
+            # Execute instantiation and precompilation again
+            push!(build_args, "INVALIDATE_INSTANTIATE" => randstring())
+            build(joinpath(@__DIR__, "pkg-v1"), build_args)
+            ji_stat2 = only(stat_cached_ji_files(depot_cache_id))
+
+            # TODO: Double check why we need to use the cache mount for this comparison
+            # rather than the final image.
+            if VERSION >= v"1.11"
+                # With relocatable precompilation files the modification date of the package
+                # code doesn't matter so the precompilation file is reused.
+                @test ji_stat2.path == ji_stat1.path
+                @test ji_stat2.sha == ji_stat1.sha
+                @test ji_stat2.created == ji_stat1.created
+                @test ji_stat2.modified > ji_stat1.modified
+            else
+                # Since the Julia packages were re-instantiated their modification dates
+                # have changed which invalidates the associated `.ji` file.
+                @test ji_stat2.path == ji_stat1.path
+                @test ji_stat2.sha != ji_stat1.sha
+                @test ji_stat2.created > ji_stat1.created
+                @test ji_stat2.modified > ji_stat1.modified
+            end
+        end
+    end
 end
