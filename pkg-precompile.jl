@@ -214,7 +214,7 @@ symlink(cache_compiled_dir, final_compiled_dir)
 # Record the pre-existing precompile cache files which exist in the cache mount.
 old_cache_paths = filter!(within_depot, compilecache_paths(env))
 
-set_distinct_active_project() do
+# set_distinct_active_project() do
     # When a root package is defined but can not be loaded we need to exclude it from the
     # packages which are precompiled.
     root = root_package(env)
@@ -228,7 +228,7 @@ set_distinct_active_project() do
     end
 
     Pkg.precompile(package_specs; strict=true, timing=true)
-end
+# end
 
 cache_paths = filter!(within_depot, compilecache_paths(env))
 
@@ -238,7 +238,7 @@ cache_paths = filter!(within_depot, compilecache_paths(env))
 # determining if a cache file is new.
 @debug begin
     paths = map(cache_paths) do p
-        string(p, !(p in old_cache_paths) ? " (new)" : "")
+        string(p, !(p in old_cache_paths) ? " (new)" : "", " ", sha256sum(p))
     end
     num_new = length(setdiff(cache_paths, old_cache_paths))
     total = length(cache_paths)
@@ -308,4 +308,8 @@ if root.loadable
     end
 
     Base.require(Main, Symbol(root.pkg.name))
+end
+
+for cache_path in cache_paths
+    println("$cache_path $(sha256sum(cache_path))")
 end

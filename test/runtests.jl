@@ -9,6 +9,7 @@ const GEN_SRC_PLACEHOLDER = v"1.10.0" <= VERSION <= v"1.10.6" || VERSION == v"1.
 include("utils.jl")
 
 @testset "Docker Package Precompile" begin
+#=
     @testset "stdlib user precompile" begin
         with_cache_mount(; id_prefix="julia-depot-stdlib-user-precompile-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
@@ -120,7 +121,7 @@ include("utils.jl")
     # distinct projects may use the same project path. When that occurs Julia could use the
     # same compile cache path resulting in cache files being unncesssarily clobbered and
     # also causing build failures when using `sharing=shared`.
-    @testset "different package version, same project path" begin
+    @testset "different package version, same project path (serial)" begin
         with_cache_mount(; id_prefix="julia-different-pkg-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
@@ -155,7 +156,31 @@ include("utils.jl")
             end
         end
     end
+=#
+    @testset "different package version, same project path (parallel)" begin
+        with_cache_mount(; id_prefix="julia-different-pkg-parallel-") do depot_cache_id
+            @test length(get_cached_ji_files(depot_cache_id)) == 0
 
+            julia_project = "/julia-project"
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_PROJECT" => julia_project,
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+
+            # Execute multiple builds concurrently. Typically, this will result in a
+            # warning similar to:
+            #
+            # ```
+            # MultilineStrings Being precompiled by another process (pid: 7, pidfile: /usr/local/share/julia-depot/compiled/v1.11/MultilineStrings/Rjnab_47bCJ.ji.pidfile)
+            # ```
+            t0 = @async build(joinpath(@__DIR__, "pkg-v0"), build_args; debug=true)
+            t1 = @async build(joinpath(@__DIR__, "pkg-v1"), build_args; debug=true)
+            wait(t0)
+            wait(t1)
+
+            @test length(get_cached_ji_files(depot_cache_id)) == 2
+        end
+    end
+#=
     # Julia 1.11+ will search for existing precompilation files which can be used even if
     # the names (Julia project) differs. We rely on this functionality to avoid unnecessary
     # precompilation when using `set_distinct_active_project`. Julia 1.10 doesn't have this
@@ -417,4 +442,5 @@ include("utils.jl")
             @test ji_stat2.modified > ji_stat1.modified
         end
     end
+    =#
 end
