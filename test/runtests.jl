@@ -454,8 +454,8 @@ include("utils.jl")
             # $pkg Being precompiled by an async task in this process (pidfile: /usr/local/share/julia-depot/compiled/v1.11/$pkg/Rjnab_47bCJ.ji.pidfile)
             # ```
             @info "Starting concurrent shared access builds..."
-            task_a = @async build(joinpath(@__DIR__, "concurrent-a"), build_args; debug=false)
-            task_b = @async build(joinpath(@__DIR__, "concurrent-b"), build_args; debug=false)
+            task_a = @async build(joinpath(@__DIR__, "concurrent-a"), build_args; debug=true)
+            task_b = @async build(joinpath(@__DIR__, "concurrent-b"), build_args; debug=true)
             wait(task_a)
             wait(task_b)
 
@@ -464,6 +464,7 @@ include("utils.jl")
             @test !istaskfailed(task_a)
             @test !istaskfailed(task_b)
 
+            @show get_cached_ji_files(depot_cache_id)
             @test length(filter(contains(r"\bMultilineStrings\b"), get_cached_ji_files(depot_cache_id))) == 2
         end
     end
