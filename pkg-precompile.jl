@@ -4,16 +4,26 @@
 #
 # - Using `Pkg.gc(collect_delay=Day(0))` does not clean up unused `.ji` files. As we want to
 #   only include the required `.ji` files used by the architecture of the current image we
-#   need to copy what we want from the cache rather than copy everything and then clean.
-# - Symlinks are used to create hybrid Julia depots which use a combination of the image
-#   depot and the shared cache depot. This appears to be the best mechanism to avoid
-#   unnecessary file transfer while still populating the shared cache depot.
-# - Julia provides a limited some concurrent precompilation support between multiple Julia
+#   need to copy what we want from the cache rather than copy everything and then cleanup.
+# - Symlinks are used to create hybrid Julia depots which use a combination of the final
+#   depot and the cache depot. This appears to be the best mechanism to avoid unnecessary
+#   file transfers while still populating a shared cache.
+# - Julia provides some basic concurrent precompilation support between multiple Julia
 #   processes. However, using `type=cache,sharing=shared` is dangerous since different
 #   package versions overwrite the same precompilation file. Cache mounts should use
 #   `sharing=locked` and alternatively `sharing=private`.
-# - Julia standard libaries sometimes utilize precompile files (i.e. SuiteSparse)
+# - Julia standard libaries do make use of precompilation files in the user depot
+#   (i.e. SuiteSparse)
+# - Containers may already include pre-existing precompilation files. When using this script
+#   most existing files will be preserved but any precompilation cache files required by the
+#   active Julia project will overwrite any files where their content checksums do not
+#   match.
 
+
+# Limit the Julia versions which can run this script. We have this restriction as this is
+# the first version of Julia to define `Base.isprecompiled` which is a critical self-check
+# part of this script.
+#
 # https://github.com/JuliaLang/julia/pull/50218 (f6f35533f237d55e881276428bef2f091f9cae5b)
 if VERSION < v"1.10.0-DEV.1604"
     error("Script $(basename(@__FILE__())) is only supported on Julia 1.10+")
@@ -29,6 +39,7 @@ if VERSION >= v"1.11.0-alpha1.76"
 else
     using Base: StaleCacheKey, find_all_in_cache_path, stale_cachefile
 
+    # Provide a `compilecache_path` method which accepts only `PkgId` on Julia 1.10.
     # Adapted from Julia's 1.10.0 version of `isprecompiled` and PR #53906.
     function compilecache_path(pkg::PkgId;
             ignore_loaded::Bool=false,
@@ -76,6 +87,15 @@ else
     end
 end
 
+"""
+    root_package(env) -> @NamedTuple{pkg::Union{PkgId,Nothing},loadable::Bool}
+
+For named Julia projects returns the `PkgId` and whether the package defines a `.jl` file
+which would be used for loading the package.
+
+It appears Julia doesn't clearly define term for this source file so I've opted to name it
+"root". Alternatively, this could name be "entry".
+"""
 function root_package(env::Pkg.Types.EnvCache)
     if !isnothing(env.project.name) && !isnothing(env.project.uuid)
         pkg = PkgId(env.project.uuid, env.project.name)
@@ -89,6 +109,12 @@ function root_package(env::Pkg.Types.EnvCache)
     return (; pkg, loadable)
 end
 
+"""
+    compilecache_paths(env) -> Vector{String}
+
+Provide a complete list of compile cache paths for all Julia packages directly used or
+depended upon within the active Julia project.
+"""
 function compilecache_paths(env::Pkg.Types.EnvCache)
     manifest = env.manifest
 
@@ -111,11 +137,10 @@ function compilecache_paths(env::Pkg.Types.EnvCache)
         end
     end
 
-    # The Project.toml may define a "root" package
     root = root_package(env)
     if !isnothing(root.pkg) && root.loadable
-        # The `compilecache_path` function doesn't work for non-dependencies (not sure why).
-        # We'll add all cache paths we find to be cautious.
+        # The `compilecache_path` function doesn't work for this package (not sure why).
+        # We'll add all cache paths we find to be safe.
         paths = Base.find_all_in_cache_path(root.pkg)
         append!(results, paths)
     end
@@ -123,11 +148,24 @@ function compilecache_paths(env::Pkg.Types.EnvCache)
     return results
 end
 
+"""
+    depot_relpath(path) -> String
+
+Create a path relative to the primary Julia depot provided that the path resides within the
+depot. If the path exists outside the depot `nothing` will be returned.
+"""
 function depot_relpath(path::AbstractString)
     startswith(path, DEPOT_PATH[1]) || return nothing
     return relpath(path, DEPOT_PATH[1])
 end
 
+within_depot(path::AbstractString) = startswith(path, DEPOT_PATH[1])
+
+"""
+    sha256sum(path) -> String
+
+Create a SHA-256 hexadecimal string from the contents of the provided `path`.
+"""
 function sha256sum(path)
     return open(path, "r") do io
         bytes2hex(sha256(io))
@@ -152,32 +190,6 @@ function set_distinct_active_project(f)
     end
 end
 
-# function isolate(f)
-#     project_file = Base.active_project()
-#     project_toml = TOML.parsefile(project_file)
-
-#     name = get(project_toml, "name", nothing)
-#     if !isnothing(name) && !isfile(joinpath(dirname(project_file), "src", "$name.jl"))
-#         backup_project_file = project_file * ".bak"
-#         mv(project_file, backup_project_file)
-
-#         delete!(project_toml, "name")
-#         open(project_file, "w") do io
-#             TOML.print(io, project_toml)
-#         end
-
-#         try
-#             f()
-#         finally
-#             mv(backup_project_file, project_file)
-#         end
-#     else
-#         f()
-#     end
-# end
-
-within_depot(path::AbstractString) = startswith(path, DEPOT_PATH[1])
-
 cache_depot = ARGS[1]
 final_depot = length(ARGS) >= 2 ? ARGS[2] : DEPOT_PATH[1]
 
@@ -194,14 +206,17 @@ backup_compiled_dir = joinpath(final_depot, "compiled.backup")
 
 mkpath(cache_compiled_dir)
 
-# Creating this symlink requires that the final compiled directory doesn't exist
+# Creating this symlink requires that the final compiled directory doesn't exist. If it does
+# we'll move the existing compiled directory temporarily.
 isdir(final_compiled_dir) && mv(final_compiled_dir, backup_compiled_dir)
 symlink(cache_compiled_dir, final_compiled_dir)
 
+# Record the pre-existing precompile cache files which exist in the cache mount.
 old_cache_paths = filter!(within_depot, compilecache_paths(env))
+
 set_distinct_active_project() do
-    # When a root package is defined but can not be precompiled we need to explicitly state
-    # which packages we'll precompile.
+    # When a root package is defined but can not be loaded we need to exclude it from the
+    # packages which are precompiled.
     root = root_package(env)
     package_specs = if !isnothing(root.pkg) && !root.loadable
         @warn "Package $(root.pkg.name) is incomplete. Excluding it from precompilation"
@@ -209,7 +224,7 @@ set_distinct_active_project() do
                      for (uuid, dep) in Pkg.dependencies(env)
                      if !in_sysimage(PkgId(uuid, dep.name))]
     else
-        PackageSpec[]
+        PackageSpec[]  # Precompile everything
     end
 
     Pkg.precompile(package_specs; strict=true, timing=true)
@@ -217,6 +232,10 @@ end
 
 cache_paths = filter!(within_depot, compilecache_paths(env))
 
+# Report the `.ji` files which will be transferred from the cache depot to the final depot.
+#
+# TODO: We could improve the accuracy of this message by utilizing checksums when
+# determining if a cache file is new.
 @debug begin
     paths = map(cache_paths) do p
         string(p, !(p in old_cache_paths) ? " (new)" : "")
@@ -226,7 +245,7 @@ cache_paths = filter!(within_depot, compilecache_paths(env))
     "Precompile files to transfer (new additions $num_new/$total):\n$(join(paths, '\n'))"
 end
 
-# Delete symlink and restore the old compiled directory
+# Delete symlink and restore the old compiled directory, if any.
 rm(final_compiled_dir)
 if isdir(backup_compiled_dir)
     mv(backup_compiled_dir, final_compiled_dir)
@@ -247,7 +266,7 @@ for cache_path in cache_paths
 
     mkpath(dst_cache_dir)
 
-    # Need to copy the `.ji` file and any associated library `.so`/`.dylib`
+    # Need to copy the `.ji` file and any associated library `.so`/`.dylib` files
     for f in readdir(src_cache_dir)
         if startswith(f, prefix)
             src_file = joinpath(src_cache_dir, f)
