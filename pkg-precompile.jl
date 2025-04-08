@@ -8,16 +8,15 @@
 # - Symlinks are used to create hybrid Julia depots which use a combination of the final
 #   depot and the cache depot. This appears to be the best mechanism to avoid unnecessary
 #   file transfers while still populating a shared cache.
-# - Julia provides some basic concurrent precompilation support between multiple Julia
-#   processes. However, using `type=cache,sharing=shared` is dangerous since different
-#   package versions overwrite the same precompilation file. Cache mounts should use
-#   `sharing=locked` and alternatively `sharing=private`.
 # - Julia standard libaries do make use of precompilation files in the user depot
 #   (i.e. SuiteSparse)
-# - Containers may already include pre-existing precompilation files. When using this script
-#   most existing files will be preserved but any precompilation cache files required by the
-#   active Julia project will overwrite any files where their content checksums do not
-#   match.
+# - Julia utilizes the active project directory to generate unique `.ji` file slugs. When
+#   using a depot shared between Docker containers this isn't necessarily unique enough so
+#   we modify the project path to ensure generated slugs are both deterministic and unique.
+# - Containers may already include pre-existing precompilation files. This script preserves
+#   most of the existing precompilation files but but any precompilation cache files
+#   required by the active Julia project will overwrite any pre-existing files when their
+#   content checksums differ.
 
 
 # Limit the Julia versions which can run this script. We have this restriction as this is
@@ -172,14 +171,42 @@ function sha256sum(path)
     end
 end
 
+"""
+    set_distinct_active_project(f) -> Any
+
+Update the active Julia project to use a distinct path based upon the content hash of the
+Manifest.toml (if available) or Project.toml. Used to ensure that `.ji` generate unique
+slugs.
+
+When Julia generates the `.ji` precompile slug it uses the [active Julia project path as
+part of the hash](https://github.com/JuliaLang/julia/blob/019aa63fdeeabb0d42c435af2ade796938b3631a/base/loading.jl#L3150).
+Typically, only one Julia Project.toml resides within a directory but inside of Docker build
+containers it is possible for different Project.toml's to reside within the same path. This
+can result in Julia generating a single `.ji` file for multiple versions of a Julia package
+rather than a `.ji` file for each version.
+
+Additionally, Julia searches through the pre-existing precompilation files for a package
+before generating a new one. Due to this search behavior we don't need to use a
+predetermined `.ji` file for Julia to be able to use it. We can take advantage of this by
+modifying the Julia project path such we can generate unique `.ji` files for each version of
+a Julia package.
+"""
 function set_distinct_active_project(f)
+    # Generate a checksum based upon the content of the Manifest.toml (preferred) or the
+    # Project.toml.
     project_file = Base.active_project()
     manifest_file = Base.project_file_manifest_path(project_file)
     hash = sha256sum(isfile(manifest_file) ? manifest_file : project_file)
+
     project_dir = dirname(project_file)
     new_project_dir = project_dir * "-" * hash
+
+    # Co-locate the current Julia project directory to ensure that we not moving the project
+    # content between disks.
     mv(project_dir, new_project_dir)
     try
+        # Create a symlink which uses the old project directory to ensure that relative and
+        # absolute paths in the Manifest.toml still work.
         symlink(new_project_dir, project_dir)
         Base.set_active_project(new_project_dir)
         f()
@@ -238,7 +265,7 @@ cache_paths = filter!(within_depot, compilecache_paths(env))
 # determining if a cache file is new.
 @debug begin
     paths = map(cache_paths) do p
-        string(p, !(p in old_cache_paths) ? " (new)" : "", " ", sha256sum(p))
+        string(p, !(p in old_cache_paths) ? " (new)" : "")
     end
     num_new = length(setdiff(cache_paths, old_cache_paths))
     total = length(cache_paths)
@@ -308,8 +335,4 @@ if root.loadable
     end
 
     Base.require(Main, Symbol(root.pkg.name))
-end
-
-for cache_path in cache_paths
-    println("$cache_path $(sha256sum(cache_path))")
 end
