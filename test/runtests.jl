@@ -341,7 +341,7 @@ include("utils.jl")
             ji_files = get_cached_ji_files(depot_cache_id)
 
             # A precompilation file will be created when `gen-pkg-src.jl` is used.
-            @test length(ji_files) == GEN_PKG_SRC ? 2 : 1
+            @test length(ji_files) == (GEN_PKG_SRC ? 2 : 1)
             if GEN_PKG_SRC
                 @test "Demo" in basename.(dirname.(ji_files))
             else
