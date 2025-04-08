@@ -453,7 +453,7 @@ include("utils.jl")
             # ```
             # $pkg Being precompiled by an async task in this process (pidfile: /usr/local/share/julia-depot/compiled/v1.11/$pkg/Rjnab_47bCJ.ji.pidfile)
             # ```
-            @warning "Starting concurrent shared access builds. The following output is a combination of two image builds..."
+            @warn "Starting concurrent shared access builds. The following output is a combination of two image builds..."
             task_a = @async build(joinpath(@__DIR__, "concurrent-a"), build_args)
             task_b = @async build(joinpath(@__DIR__, "concurrent-b"), build_args)
             wait(task_a)
