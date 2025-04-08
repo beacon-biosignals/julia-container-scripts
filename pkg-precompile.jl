@@ -38,7 +38,7 @@ if VERSION >= v"1.11.0-alpha1.76"
 else
     using Base: StaleCacheKey, find_all_in_cache_path, stale_cachefile
 
-    # Provide a `compilecache_path` method which accepts only `PkgId` on Julia 1.10.
+    # Provide a `compilecache_path` method which accepts a single argument on Julia 1.10.
     # Adapted from Julia's 1.10.0 version of `isprecompiled` and PR #53906.
     function compilecache_path(pkg::PkgId;
             ignore_loaded::Bool=false,
