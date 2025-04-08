@@ -2,6 +2,12 @@ using Base: PkgId
 using Test
 using UUIDs: UUID
 
+const JULIA_VERSION = if v"1.12.0-" <= VERSION <= v"1.12.0"
+    "1.12.0-beta1"
+else
+    string(VERSION)
+end
+
 # These versions of Julia require a `src/$(name).jl` to be present to instantiate a named
 # Julia project.
 const GEN_PKG_SRC = v"1.10.0" <= VERSION <= v"1.10.6" || VERSION == v"1.11.0"
@@ -13,7 +19,7 @@ include("utils.jl")
         with_cache_mount(; id_prefix="julia-depot-stdlib-user-precompile-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
             # SuiteSparse is a stdlib that also creates a `.ji` file.
@@ -37,7 +43,7 @@ include("utils.jl")
         with_cache_mount(; id_prefix="julia-depot-stdlib-in-sysimage-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
             # SHA is usually built into the Julia system image and has no dependencies.
@@ -68,7 +74,7 @@ include("utils.jl")
         with_cache_mount(; id_prefix="julia-depot-stdlib-bundled-precompile-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
             image = build(joinpath(@__DIR__, "stdlib-bundled-precompile"), build_args)
@@ -88,7 +94,7 @@ include("utils.jl")
         with_cache_mount(; id_prefix="julia-depot-extension-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
             # Build an image which installs Compat/LinearAlgebra and the extension
@@ -125,7 +131,7 @@ include("utils.jl")
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
             julia_project = "/julia-project"
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_PROJECT" => julia_project,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
@@ -144,7 +150,7 @@ include("utils.jl")
             # creating a new cache mount and checking the name of the produced compile cache
             # path.
             with_cache_mount(; id_prefix="julia-different-pkg-alt-") do alt_depot_cache_id
-                build_args = ["JULIA_VERSION" => string(VERSION),
+                build_args = ["JULIA_VERSION" => JULIA_VERSION,
                               "JULIA_PROJECT" => julia_project,
                               "JULIA_DEPOT_CACHE_ID" => alt_depot_cache_id]
 
@@ -170,7 +176,7 @@ include("utils.jl")
 
             # Build the image which will create the precomplation file based upon the
             # provided Julia project path "A".
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_PROJECT" => julia_project_a,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
             build(joinpath(@__DIR__, "pkg-v1"), build_args)
@@ -179,7 +185,7 @@ include("utils.jl")
 
             # Build an image with Julia project path "B". Julia will noticed the existing
             # precompilation file from "A" and use that instead of creating a new one.
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_PROJECT" => julia_project_b,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
             build(joinpath(@__DIR__, "pkg-v1"), build_args)
@@ -196,7 +202,7 @@ include("utils.jl")
                 # Build another the image which will create a new  precomplation file based
                 # upon the provided Julia project path "B". The name of the  precompilation
                 # file will differ from the one created with Julia project path "A".
-                build_args = ["JULIA_VERSION" => string(VERSION),
+                build_args = ["JULIA_VERSION" => JULIA_VERSION,
                               "JULIA_PROJECT" => julia_project_b,
                               "JULIA_DEPOT_CACHE_ID" => alt_depot_cache_id]
                 build(joinpath(@__DIR__, "pkg-v1"), build_args)
@@ -208,7 +214,7 @@ include("utils.jl")
                 # Build an image with the Julia project path "A". Julia will noticed the
                 # existing precompilation file from "B" and use that instead of creating a
                 # new one.
-                build_args = ["JULIA_VERSION" => string(VERSION),
+                build_args = ["JULIA_VERSION" => JULIA_VERSION,
                               "JULIA_PROJECT" => julia_project_a,
                               "JULIA_DEPOT_CACHE_ID" => alt_depot_cache_id]
                 build(joinpath(@__DIR__, "pkg-v1"), build_args)
@@ -241,7 +247,7 @@ include("utils.jl")
             # ```
             # ERROR: InitError: IOError: mkdir("/usr/local/share/julia-depot/scratchspaces/be6f12e9-ca4f-5eb2-a339-a4f995cc0291"; mode=0o777): permission denied (EACCES)
             # ```
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
             image = build(joinpath(@__DIR__, "initialize"), build_args; target="user")
 
@@ -281,7 +287,7 @@ include("utils.jl")
 
     @testset "relocate depot" begin
         with_cache_mount(; id_prefix="julia-relocate-") do depot_cache_id
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
             image = build(joinpath(@__DIR__, "pkg-v1"), build_args; target="relocate-depot", debug=true)
 
@@ -310,7 +316,7 @@ include("utils.jl")
         with_cache_mount(; id_prefix="julia-named-project-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id,
                           "GEN_PKG_SRC" => string(GEN_PKG_SRC)]
 
@@ -333,7 +339,7 @@ include("utils.jl")
         with_cache_mount(; id_prefix="julia-named-project-no-src-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id,
                           "GEN_PKG_SRC" => string(GEN_PKG_SRC)]
 
@@ -360,7 +366,7 @@ include("utils.jl")
         with_cache_mount(; id_prefix="julia-reinstantiate-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
             # Generate the precompile file
@@ -402,7 +408,7 @@ include("utils.jl")
         with_cache_mount(; id_prefix="julia-reinstantiate-workaround-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id,
                           "FIXED_PACKAGE_TIMESTAMPS" => "true"]
 
@@ -450,7 +456,7 @@ include("utils.jl")
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
             julia_project = "/julia-project"
-            build_args = ["JULIA_VERSION" => string(VERSION),
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_PROJECT" => julia_project,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
 
