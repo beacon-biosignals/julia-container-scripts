@@ -2,6 +2,10 @@ using Base: PkgId
 using Test
 using UUIDs: UUID
 
+# These versions of Julia require a `src/$(name).jl` to be present to instantiate a named
+# Julia project.
+const GEN_SRC_PLACEHOLDER = v"1.10.0" <= VERSION <= v"1.10.6" || VERSION == v"1.11.0"
+
 include("utils.jl")
 
 @testset "Docker Package Precompile" begin
@@ -307,7 +311,8 @@ include("utils.jl")
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
             build_args = ["JULIA_VERSION" => string(VERSION),
-                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id,
+                          "GEN_SRC_PLACEHOLDER" => string(GEN_SRC_PLACEHOLDER)]
 
             image = build(joinpath(@__DIR__, "named-project"), build_args)
             ji_files = get_cached_ji_files(depot_cache_id)
@@ -329,7 +334,8 @@ include("utils.jl")
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
             build_args = ["JULIA_VERSION" => string(VERSION),
-                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id,
+                          "GEN_SRC_PLACEHOLDER" => string(GEN_SRC_PLACEHOLDER)]
 
             image = build(joinpath(@__DIR__, "named-project-no-src"), build_args)
             ji_files = get_cached_ji_files(depot_cache_id)
