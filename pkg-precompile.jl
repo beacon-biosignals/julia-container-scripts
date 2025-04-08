@@ -214,7 +214,7 @@ symlink(cache_compiled_dir, final_compiled_dir)
 # Record the pre-existing precompile cache files which exist in the cache mount.
 old_cache_paths = filter!(within_depot, compilecache_paths(env))
 
-# set_distinct_active_project() do
+set_distinct_active_project() do
     # When a root package is defined but can not be loaded we need to exclude it from the
     # packages which are precompiled.
     root = root_package(env)
@@ -228,7 +228,7 @@ old_cache_paths = filter!(within_depot, compilecache_paths(env))
     end
 
     Pkg.precompile(package_specs; strict=true, timing=true)
-# end
+end
 
 cache_paths = filter!(within_depot, compilecache_paths(env))
 

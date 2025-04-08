@@ -41,7 +41,8 @@ function get_cached_ji_files(args...; kwargs...)
     return [st.path for st in stat_cached_ji_files(args...; kwargs...)]
 end
 
-function build(context::AbstractString, build_args::AbstractVector{Pair{String,String}}=[];
+function build(context::AbstractString,
+               build_args::AbstractVector{Pair{String,String}}=Pair{String,String}[];
                target::Union{AbstractString,Nothing}=nothing,
                debug::Bool=true)
     # Docker doesn't support the use of symbolic links for copying files outside the

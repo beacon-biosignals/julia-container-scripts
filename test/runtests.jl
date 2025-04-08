@@ -9,7 +9,6 @@ const GEN_SRC_PLACEHOLDER = v"1.10.0" <= VERSION <= v"1.10.6" || VERSION == v"1.
 include("utils.jl")
 
 @testset "Docker Package Precompile" begin
-#=
     @testset "stdlib user precompile" begin
         with_cache_mount(; id_prefix="julia-depot-stdlib-user-precompile-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
@@ -156,31 +155,7 @@ include("utils.jl")
             end
         end
     end
-=#
-    @testset "different package version, same project path (parallel)" begin
-        with_cache_mount(; id_prefix="julia-different-pkg-parallel-") do depot_cache_id
-            @test length(get_cached_ji_files(depot_cache_id)) == 0
 
-            julia_project = "/julia-project"
-            build_args = ["JULIA_VERSION" => string(VERSION),
-                          "JULIA_PROJECT" => julia_project,
-                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
-
-            # Execute multiple builds concurrently. Typically, this will result in a
-            # warning similar to:
-            #
-            # ```
-            # MultilineStrings Being precompiled by another process (pid: 7, pidfile: /usr/local/share/julia-depot/compiled/v1.11/MultilineStrings/Rjnab_47bCJ.ji.pidfile)
-            # ```
-            t0 = @async build(joinpath(@__DIR__, "pkg-v0"), build_args; debug=true)
-            t1 = @async build(joinpath(@__DIR__, "pkg-v1"), build_args; debug=true)
-            wait(t0)
-            wait(t1)
-
-            @test length(get_cached_ji_files(depot_cache_id)) == 2
-        end
-    end
-#=
     # Julia 1.11+ will search for existing precompilation files which can be used even if
     # the names (Julia project) differs. We rely on this functionality to avoid unnecessary
     # precompilation when using `set_distinct_active_project`. Julia 1.10 doesn't have this
@@ -442,5 +417,54 @@ include("utils.jl")
             @test ji_stat2.modified > ji_stat1.modified
         end
     end
-    =#
+
+    # In order to support concurrent write access to the cache mount via `sharing=shared` we
+    # need:
+    #
+    # - Julia to provide some basic concurrent precompilation support between multiple Julia
+    #   processes.
+    # - Different versions of Julia packages use different `.ji` filenames (handled via
+    #   `set_distinct_active_project`).
+    # - Ensure that we have the correct precompilation files after we have transferred `.ji`
+    #   files from the cache mount to the Julia depot baked into the image.
+    #
+    # Executes two image builds concurrently where most of the package versions are the same
+    # and one package version differs. If the package with different versions precompiles
+    # early and the remaining packages precompile after we could end up in a scenario where
+    # only one precompilation file exists for the package with two different versions.
+    #
+    # To make this scenario occur we'll use a package like MultilineStrings.jl for the
+    # package where multiple versions are used as it's light-weight (0.5s to precompile) and
+    # very few dependencies. We'll use Parsers.jl as it's heavy-weight (10s to precompile)
+    # and also has few dependencies. The end result is that MultilineStrings.jl for both
+    # containers will finish precompilation before Parsers.jl. If any collision were to
+    # occur it would happen prior to the `.ji` transfer step.
+    @testset "concurrent shared access" begin
+        with_cache_mount(; id_prefix="julia-concurrent-") do depot_cache_id
+            @test length(get_cached_ji_files(depot_cache_id)) == 0
+
+            julia_project = "/julia-project"
+            build_args = ["JULIA_VERSION" => string(VERSION),
+                          "JULIA_PROJECT" => julia_project,
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id]
+
+            # TODO: Suppress build output as it is all intermixed at the moment.
+            # The build output will contain a few messages like this:
+            # ```
+            # $pkg Being precompiled by an async task in this process (pidfile: /usr/local/share/julia-depot/compiled/v1.11/$pkg/Rjnab_47bCJ.ji.pidfile)
+            # ```
+            @info "Starting concurrent shared access builds..."
+            task_a = @async build(joinpath(@__DIR__, "concurrent-a"), build_args; debug=false)
+            task_b = @async build(joinpath(@__DIR__, "concurrent-b"), build_args; debug=false)
+            wait(task_a)
+            wait(task_b)
+
+            @test istaskdone(task_a)
+            @test istaskdone(task_b)
+            @test !istaskfailed(task_a)
+            @test !istaskfailed(task_b)
+
+            @test length(filter(contains(r"\bMultilineStrings\b"), get_cached_ji_files(depot_cache_id))) == 2
+        end
+    end
 end
