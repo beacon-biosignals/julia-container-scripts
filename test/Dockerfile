@@ -51,10 +51,10 @@ COPY Project.toml *Manifest.toml ${JULIA_PROJECT}/
 
 # Julia 1.10.0 - 1.10.6 and 1.11.0 all require this source file to be present when 
 # instantiating a named project.
-ARG GEN_SRC_PLACEHOLDER="false"
-RUN if [ "$GEN_SRC_PLACEHOLDER" = "true" ]; then \
-        mkdir -p "${JULIA_PROJECT}/src" && \
-        touch "${JULIA_PROJECT}/src/$(basename "${JULIA_PROJECT}").jl"; \
+ARG GEN_PKG_SRC="false"
+COPY gen-pkg-src.jl /usr/local/bin
+RUN if [ "$GEN_PKG_SRC" = "true" ]; then \
+        gen-pkg-src.jl; \
     fi
 
 # Pass in a random string as a build-arg to force instantiation to run again during a Docker

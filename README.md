@@ -20,12 +20,14 @@ RUN julia --color=yes -e 'using Pkg; Pkg.Registry.add("General")'
 ENV JULIA_PROJECT="/project"
 COPY Project.toml *Manifest.toml ${JULIA_PROJECT}/
 
-# TODO: Delete this optional statement if your Project.toml does not include the field "name".
+# TODO: Delete this optional statement if your Project.toml does not include the field
+# "name" or you don't care about supporting the Julia versions listed below.
 #
 # Julia 1.10.0 - 1.10.6 and 1.11.0 require this source file to be present when
 # instantiating a named Julia project.
-RUN mkdir -p "${JULIA_PROJECT}/src" && \
-    touch "${JULIA_PROJECT}/src/$(basename "${JULIA_PROJECT}").jl"
+RUN curl -fsSLO https://raw.githubusercontent.com/beacon-biosignals/julia-container-scripts/refs/tags/v1/gen-pkg-src.jl && \
+    ./gen-pkg-src.jl && \
+    rm gen-pkg-src.jl
 
 # Instantiate the Julia project environment and avoid precompiling. Ensure we perform a
 # registry update here as changes to the Project.toml/Manifest.toml does not invalidate the
@@ -47,9 +49,9 @@ RUN julia -e 'VERSION < v"1.11" || exit(1)' && \
 
 # Precompile project dependencies using a Docker cache mount which persists between builds.
 RUN --mount=type=cache,id=julia-depot,sharing=shared,target=/mnt/julia-depot \
-    curl -fsSL https://raw.githubusercontent.com/beacon-biosignals/julia-container-scripts/refs/tags/v1/pkg-precompile.jl &&
-    install pkg-precompile.jl /usr/local/bin && \
-    pkg-precompile.jl "/mnt/julia-depot" && \
+    curl -fsSLO https://raw.githubusercontent.com/beacon-biosignals/julia-container-scripts/refs/tags/v1/pkg-precompile.jl &&
+    ./pkg-precompile.jl "/mnt/julia-depot" && \
+    rm pkg-precompile.jl
 
 # Copy files necessary to load package and perform the first initialization.
 COPY src ${JULIA_PROJECT}/src

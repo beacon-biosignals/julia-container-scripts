@@ -4,7 +4,7 @@ using UUIDs: UUID
 
 # These versions of Julia require a `src/$(name).jl` to be present to instantiate a named
 # Julia project.
-const GEN_SRC_PLACEHOLDER = v"1.10.0" <= VERSION <= v"1.10.6" || VERSION == v"1.11.0"
+const GEN_PKG_SRC = v"1.10.0" <= VERSION <= v"1.10.6" || VERSION == v"1.11.0"
 
 include("utils.jl")
 
@@ -312,7 +312,7 @@ include("utils.jl")
 
             build_args = ["JULIA_VERSION" => string(VERSION),
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id,
-                          "GEN_SRC_PLACEHOLDER" => string(GEN_SRC_PLACEHOLDER)]
+                          "GEN_PKG_SRC" => string(GEN_PKG_SRC)]
 
             image = build(joinpath(@__DIR__, "named-project"), build_args)
             ji_files = get_cached_ji_files(depot_cache_id)
@@ -335,7 +335,7 @@ include("utils.jl")
 
             build_args = ["JULIA_VERSION" => string(VERSION),
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id,
-                          "GEN_SRC_PLACEHOLDER" => string(GEN_SRC_PLACEHOLDER)]
+                          "GEN_PKG_SRC" => string(GEN_PKG_SRC)]
 
             image = build(joinpath(@__DIR__, "named-project-no-src"), build_args)
             ji_files = get_cached_ji_files(depot_cache_id)

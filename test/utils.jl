@@ -49,6 +49,7 @@ function build(context::AbstractString,
     # context so we'll setup up temporary hardlinks
     hardlink_files = [
         joinpath(@__DIR__, "..", "pkg-precompile.jl"),
+        joinpath(@__DIR__, "..", "gen-pkg-src.jl"),
     ]
     for src in hardlink_files
         dst = joinpath(context, basename(src))
