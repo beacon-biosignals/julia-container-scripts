@@ -217,14 +217,14 @@ function set_distinct_active_project(f)
     end
 end
 
+# Precompile the depot packages using the "compiled" directory from Docker cache mount
+# allowing us to perform precompilation for Julia packages once across all Docker builds on
+# a system.
 cache_depot = ARGS[1]
 final_depot = length(ARGS) >= 2 ? ARGS[2] : DEPOT_PATH[1]
 
 env = Pkg.Operations.EnvCache()
 
-# Precompile the depot packages using a Docker cache mount as the "compiled" directory.
-# Using a cache mount allows us to perform precompilation for Julia packages once across all
-# Docker builds on a system.
 @info "Precompile packages..."
 
 cache_compiled_dir = joinpath(cache_depot, "compiled")
