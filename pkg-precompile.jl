@@ -222,6 +222,8 @@ end
 
 function set_mtime(path::AbstractString, mtime::DateTime)
     # Available even on minimal alpine images
+    cmd = `touch -m -t $(Dates.format(mtime, dateformat"yyyymmddHHMM")) $path`
+    @show cmd
     run(`touch -m -t $(Dates.format(mtime, dateformat"yyyymmddHHMM")) $path`)
     return nothing
 end
