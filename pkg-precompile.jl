@@ -240,10 +240,10 @@ if VERSION < v"1.11"
     @info "Update modification time for packages"
     for (root, dirs, files) in walkdir(joinpath(final_depot, "packages"))
         for dir in dirs
-            set_mtime(dir, FIXED_MTIME)
+            set_mtime(joinpath(root, dir), FIXED_MTIME)
         end
         for file in files
-            set_mtime(file, FIXED_MTIME)
+            set_mtime(joinpath(root, file), FIXED_MTIME)
         end
     end
 end
