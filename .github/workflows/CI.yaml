@@ -1,0 +1,67 @@
+---
+name: CI
+on:
+  pull_request:
+    paths:
+      - "pkg-precompile.jl"
+      - "test/**"
+      - ".github/workflows/CI.yaml"
+  push:
+    branches:
+      - main
+    tags: ["*"]
+
+jobs:
+  version:
+    name: Resolve Julia Versions
+    # These permissions are needed to:
+    # - Checkout the Git repository (`contents: read`)
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    outputs:
+      json: ${{ steps.julia-version.outputs.resolved-json }}
+    steps:
+      - uses: actions/checkout@v4 # Needed for "min" to access the Project.toml
+      - uses: julia-actions/julia-version@v0.1.0
+        id: julia-version
+        with:
+          versions: |
+            - min     # Oldest supported version
+            - lts     # Long-Term Stable
+            - 1.10.0  # Earliest 1.10 release 
+            - 1.10    # Latest 1.10 release
+            - 1.11.0  # Earliest 1.11 release
+            - 1.11    # Latest 1.11 release 
+            - 1.12-nightly
+          project: test
+          if-missing: error
+
+  test:
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }}
+    needs: version
+    # These permissions are needed to:
+    # - Delete old caches: https://github.com/julia-actions/cache#usage
+    permissions:
+      actions: write
+      contents: read
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.version.outputs.json) }}
+        os:
+          - ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+      - uses: julia-actions/cache@v1
+      - name: Instantiate
+        shell: julia --color=yes --project=test {0}
+        run: |
+          using Pkg
+          Pkg.instantiate()
+      - name: Test
+        run: julia --color=yes --project=test test/runtests.jl

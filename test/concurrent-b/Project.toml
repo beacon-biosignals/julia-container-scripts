@@ -1,0 +1,7 @@
+[deps]
+MultilineStrings = "1e8d2bf6-9821-4900-9a2f-4d87552df2bd"
+Parsers = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
+
+[compat]
+MultilineStrings = "=1.0.0"
+Parsers = "=2.8.1"
