@@ -32,6 +32,8 @@ using Base: PkgId, in_sysimage, isprecompiled
 using Pkg: Pkg, PackageSpec
 using SHA: sha256
 
+const FIXED_MTIME = DateTime(1970, 1, 1)
+
 # https://github.com/JuliaLang/julia/pull/53906 (e9d25ca09382b0f67a4c7770cba08bff3db3cb38)
 if VERSION >= v"1.11.0-alpha1.76"
     compilecache_path = Base.compilecache_path
@@ -217,6 +219,12 @@ function set_distinct_active_project(f)
     end
 end
 
+function set_mtime(path::AbstractString, mtime::DateTime)
+    # Available even on minimal alpine images
+    run(`touch -m -t $(Dates.format(dt, dateformat"yyyymmddHHMM")) $path`)
+    return nothing
+end
+
 # Precompile the depot packages using the "compiled" directory from Docker cache mount
 # allowing us to perform precompilation for Julia packages once across all Docker builds on
 # a system.
@@ -224,6 +232,18 @@ cache_depot = ARGS[1]
 final_depot = length(ARGS) >= 2 ? ARGS[2] : DEPOT_PATH[1]
 
 env = Pkg.Operations.EnvCache()
+
+if VERSION < v"1.11"
+    @info "Update modification time for packages"
+    for (root, dirs, files) in walkdir(joinpath(final_depot, "packages"))
+        for dir in dirs
+            set_mtime(dir, FIXED_MTIME)
+        end
+        for file in files
+            set_mtime(file, FIXED_MTIME)
+        end
+    end
+end
 
 @info "Precompile packages..."
 
