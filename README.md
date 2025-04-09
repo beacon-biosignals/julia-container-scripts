@@ -35,8 +35,8 @@ RUN curl -fsSLO https://raw.githubusercontent.com/beacon-biosignals/julia-contai
 # Docker layer which added the registry.
 RUN julia --color=yes -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.build()'
 
-# TODO: Delete this optional statement if you don't care about Julia 1.10 support.
-# Typically, this statement is combined with instantiation above.
+# TODO: Delete this optional statement if you don't care about Julia 1.10 support or combine
+# this statement with instantiate above to avoid bloating image size.
 #
 # Use a fixed modification time for all files in "packages" to avoid unnecessary precompile
 # cache invalidation on Julia 1.10.

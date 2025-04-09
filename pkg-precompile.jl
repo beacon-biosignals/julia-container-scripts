@@ -17,7 +17,9 @@
 #   most of the existing precompilation files but but any precompilation cache files
 #   required by the active Julia project will overwrite any pre-existing files when their
 #   content checksums differ.
-
+# - Purposely avoiding incorporating the fixed modification time workaround fix to the
+#   "packages" directory within this script as doing so creates unnecessary image bloat if
+#   this Docker step occurs in a separate statement from instantiation.
 
 # Limit the Julia versions which can run this script. We have this restriction as this is
 # the first version of Julia to define `Base.isprecompiled` which is a critical self-check
@@ -220,12 +222,6 @@ function set_distinct_active_project(f)
     end
 end
 
-function set_mtime(path::AbstractString, mtime::DateTime)
-    # The `touch` command is available even on minimal alpine images
-    run(`touch -m -t $(Dates.format(mtime, dateformat"yyyymmddHHMM")) $path`)
-    return nothing
-end
-
 # Precompile the depot packages using the "compiled" directory from Docker cache mount
 # allowing us to perform precompilation for Julia packages once across all Docker builds on
 # a system.
@@ -233,18 +229,6 @@ cache_depot = ARGS[1]
 final_depot = length(ARGS) >= 2 ? ARGS[2] : DEPOT_PATH[1]
 
 env = Pkg.Operations.EnvCache()
-
-if VERSION < v"1.11"
-    @info "Setting fixed modification time for depot packages"
-    for (root, dirs, files) in walkdir(joinpath(final_depot, "packages"))
-        for dir in dirs
-            set_mtime(joinpath(root, dir), FIXED_MTIME)
-        end
-        for file in files
-            set_mtime(joinpath(root, file), FIXED_MTIME)
-        end
-    end
-end
 
 @info "Precompile packages..."
 
