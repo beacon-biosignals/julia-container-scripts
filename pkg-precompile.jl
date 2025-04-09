@@ -29,6 +29,7 @@ if VERSION < v"1.10.0-DEV.1604"
 end
 
 using Base: PkgId, in_sysimage, isprecompiled
+using Dates: Dates, DateTime, @dateformat_str
 using Pkg: Pkg, PackageSpec
 using SHA: sha256
 
