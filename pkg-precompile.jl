@@ -121,7 +121,7 @@ function compilecache_paths(env::Pkg.Types.EnvCache)
     for (uuid, dep) in pairs(Pkg.dependencies(env))
         pkg = PkgId(uuid, dep.name)
 
-        # Packages must include there UUID to provide an accurate entry prefix and slug.
+        # Packages must include their UUID to provide an accurate entry prefix and slug.
         # The function will return `nothing` when a precompilation file is not present.
         path = compilecache_path(pkg)
         !isnothing(path) && push!(results, path)
