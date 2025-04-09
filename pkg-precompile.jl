@@ -19,7 +19,7 @@
 #   content checksums differ.
 # - Purposely avoiding incorporating the fixed modification time workaround fix to the
 #   "packages" directory within this script as doing so creates unnecessary image bloat if
-#   this Docker step occurs in a separate statement from instantiation.
+#   this Docker step occurs in a separate statement from instantiation (for Julia < v1.11).
 
 # Limit the Julia versions which can run this script. We have this restriction as this is
 # the first version of Julia to define `Base.isprecompiled` which is a critical self-check
