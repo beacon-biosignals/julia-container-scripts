@@ -31,12 +31,7 @@ RUN curl -fsSLO https://raw.githubusercontent.com/beacon-biosignals/julia-contai
     rm gen-pkg-src.jl
 
 # Instantiate the Julia project environment and avoid precompiling. Ensure we perform a
-# registry update here as changes to the Project.toml/Manifest.toml does not invalidate the
-# Docker layer which added the registry.
-RUN julia --color=yes -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.build()'
-
-# Instantiate the Julia project environment and avoid precompiling. Ensure we perform a
-# registry update here as changes to the Project.toml/Manifest.toml does not invalidate the
+# registry update here as changes to the Project.toml/Manifest.toml do not invalidate the
 # Docker layer which added the registry.
 RUN julia --color=yes -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.build()'
 
