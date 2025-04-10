@@ -45,7 +45,7 @@ RUN julia -e 'VERSION < v"1.11" || exit(1)' && \
 
 # Precompile project dependencies using a Docker cache mount which persists between builds.
 RUN --mount=type=cache,id=julia-depot,sharing=shared,target=/mnt/julia-depot \
-    curl -fsSLO https://raw.githubusercontent.com/beacon-biosignals/julia-container-scripts/refs/tags/v0.1/pkg-precompile.jl &&
+    curl -fsSLO https://raw.githubusercontent.com/beacon-biosignals/julia-container-scripts/refs/tags/v0.1/pkg-precompile.jl && \
     chmod +x pkg-precompile.jl && \
     ./pkg-precompile.jl "/mnt/julia-depot" && \
     rm pkg-precompile.jl
