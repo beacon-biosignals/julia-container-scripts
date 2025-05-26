@@ -262,9 +262,13 @@ end
 
 cache_paths = filter!(within_depot, compilecache_paths(env))
 
-@debug "old_cache_paths = $(join(old_cache_paths, '\n'))"
-@debug "cache_paths = $(join(cache_paths, '\n'))"
-foreach(println, compilecache_paths(env))
+for (root, dirs, files) in walkdir(joinpath(DEPOT_PATH[1], "compiled", "v$(VERSION.major).$(VERSION.minor)"))
+    for file in files
+        if endswith(file, ".ji")
+            println(joinpath(root, file))
+        end
+    end
+end
 
 # Report the `.ji` files which will be transferred from the cache depot to the final depot.
 #
