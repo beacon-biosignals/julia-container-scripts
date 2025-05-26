@@ -313,7 +313,8 @@ for cache_path in cache_paths
     end
 end
 
-run(`find "$(cache_depot)" -name "*Spectral*" -type f`)
+cmd = `find $cache_depot -name "*Spectral*" -type f`
+@show run(cmd)
 
 # Executes the `__init__` functions of packages by loading them. Doing this ensures that
 # one time package setup that occurs at runtime happens during the Docker build
