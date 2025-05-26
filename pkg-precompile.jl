@@ -263,7 +263,7 @@ set_distinct_active_project() do
 end
 
 cache_paths = filter!(within_depot, compilecache_paths(env))
-foreach(println, cache_paths)
+foreach(println, compilecache_paths(env))
 
 # Report the `.ji` files which will be transferred from the cache depot to the final depot.
 #
