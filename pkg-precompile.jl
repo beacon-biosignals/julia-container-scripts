@@ -244,23 +244,42 @@ symlink(cache_compiled_dir, final_compiled_dir)
 # Record the pre-existing precompile cache files which exist in the cache mount.
 old_cache_paths = filter!(within_depot, compilecache_paths(env))
 
+pkg_specs = [PackageSpec(; name=dep.name, uuid)
+             for (uuid, dep) in Pkg.dependencies(env)
+             if !in_sysimage(PkgId(uuid, dep.name))]
+
 # When a root package is defined but can not be loaded we need to exclude it from the
 # packages which are precompiled.
 root = root_package(env)
-package_specs = if !isnothing(root.pkg) && !root.loadable
-    @warn "Package $(root.pkg.name) is incomplete. Excluding it from precompilation"
-    [PackageSpec(; name=dep.name, uuid)
-                 for (uuid, dep) in Pkg.dependencies(env)
-                 if !in_sysimage(PkgId(uuid, dep.name))]
-else
-    PackageSpec[]  # Precompile everything
+if !isnothing(root.pkg)
+    if root.loadable
+        push!(pkg_specs, PackageSpec(; name=root.pkg.name, uuid=root.pkg.uuid))
+    else
+        @warn "Package $(root.pkg.name) is incomplete. Excluding it from precompilation"
+    end
 end
 
+pkg_specs_path_tracked = [PackageSpec(; name=dep.name, uuid)
+                          for (uuid, dep) in Pkg.dependencies(env)
+                          if !in_sysimage(PkgId(uuid, dep.name)) && dep.is_tracking_path]
+
+pkg_specs = setdiff(pkg_specs, pkg_specs_path_tracked)
+
+@show pkg_specs
+
 set_distinct_active_project() do
-    Pkg.precompile(package_specs; strict=true, timing=true)
+    Pkg.precompile(pkg_specs; strict=true, timing=true)
 end
 
 cache_paths = filter!(within_depot, compilecache_paths(env))
+
+# for (root, dirs, files) in walkdir(joinpath(DEPOT_PATH[1], "compiled", "v$(VERSION.major).$(VERSION.minor)"))
+#     for file in files
+#         if endswith(file, ".ji")
+#             println(joinpath(root, file))
+#         end
+#     end
+# end
 
 # Report the `.ji` files which will be transferred from the cache depot to the final depot.
 #
@@ -312,9 +331,9 @@ end
 
 # Work around Julia rejecting cache files which are path sensitive.
 # https://github.com/fatteneder/julia/blob/1f161b49532a1d98247a7ccb2d303dee6b5fe246/base/loading.jl#L2893-L2896
-if any((uuid, dep)::Pair -> !isnothing(dep.path), env.manifest.deps)
+if !isempty(pkg_specs_path_tracked)
     @info "Precompiling path sensitive packages..."
-    Pkg.precompile(package_specs)
+    Pkg.precompile(pkg_specs_path_tracked; strict=true, timing=true)
 end
 
 # Executes the `__init__` functions of packages by loading them. Doing this ensures that
@@ -324,6 +343,8 @@ end
 for (uuid, dep) in pairs(Pkg.dependencies(env))
     dep.is_direct_dep || continue
     pkg = PkgId(uuid, dep.name)
+
+    @debug "$(pkg.name): precompiled=$(isprecompiled(pkg)), in_sysimage=$(in_sysimage(pkg))"
 
     # If the copy precompilation file fails to transfer all of the required
     # precompilation files Julia will precompile the package upon the initial loading of
