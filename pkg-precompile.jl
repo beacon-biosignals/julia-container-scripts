@@ -320,6 +320,8 @@ for (uuid, dep) in pairs(Pkg.dependencies(env))
     dep.is_direct_dep || continue
     pkg = PkgId(uuid, dep.name)
 
+    @debug "$(pkg.name): precompiled=$(isprecompiled(pkg)), in_sysimage=$(in_sysimage(pkg))"
+
     # If the copy precompilation file fails to transfer all of the required
     # precompilation files Julia will precompile the package upon the initial loading of
     # the package. If that happens then this script logic is flawed and requires
