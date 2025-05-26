@@ -127,6 +127,7 @@ function compilecache_paths(env::Pkg.Types.EnvCache)
         # Packages must include their UUID to provide an accurate entry prefix and slug.
         # The function will return `nothing` when a precompilation file is not present.
         path = compilecache_path(pkg)
+        @show pkg.name path
         !isnothing(path) && push!(results, path)
 
         # Extensions are not included in the dependencies list so we need to extract that
@@ -135,6 +136,7 @@ function compilecache_paths(env::Pkg.Types.EnvCache)
             # extension name. e.g. https://github.com/JuliaLang/julia/blob/2fd6db2e2b96057dbfa15ee651958e03ca5ce0d9/base/loading.jl#L1561
             # Note: the `Base.uuid5` implementation differs from `UUIDs.uuid5`
             path = compilecache_path(PkgId(Base.uuid5(pkg.uuid, ext), ext))
+            @show ext path
             !isnothing(path) && push!(results, path)
         end
     end
