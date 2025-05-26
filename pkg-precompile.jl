@@ -127,7 +127,6 @@ function compilecache_paths(env::Pkg.Types.EnvCache)
         # Packages must include their UUID to provide an accurate entry prefix and slug.
         # The function will return `nothing` when a precompilation file is not present.
         path = compilecache_path(pkg)
-        @show pkg.name path
         !isnothing(path) && push!(results, path)
 
         # Extensions are not included in the dependencies list so we need to extract that
@@ -136,7 +135,6 @@ function compilecache_paths(env::Pkg.Types.EnvCache)
             # extension name. e.g. https://github.com/JuliaLang/julia/blob/2fd6db2e2b96057dbfa15ee651958e03ca5ce0d9/base/loading.jl#L1561
             # Note: the `Base.uuid5` implementation differs from `UUIDs.uuid5`
             path = compilecache_path(PkgId(Base.uuid5(pkg.uuid, ext), ext))
-            @show ext path
             !isnothing(path) && push!(results, path)
         end
     end
@@ -246,31 +244,23 @@ symlink(cache_compiled_dir, final_compiled_dir)
 # Record the pre-existing precompile cache files which exist in the cache mount.
 old_cache_paths = filter!(within_depot, compilecache_paths(env))
 
-set_distinct_active_project() do
-    # When a root package is defined but can not be loaded we need to exclude it from the
-    # packages which are precompiled.
-    root = root_package(env)
-    package_specs = if !isnothing(root.pkg) && !root.loadable
-        @warn "Package $(root.pkg.name) is incomplete. Excluding it from precompilation"
-        [PackageSpec(; name=dep.name, uuid)
-                     for (uuid, dep) in Pkg.dependencies(env)
-                     if !in_sysimage(PkgId(uuid, dep.name))]
-    else
-        PackageSpec[]  # Precompile everything
-    end
+# When a root package is defined but can not be loaded we need to exclude it from the
+# packages which are precompiled.
+root = root_package(env)
+package_specs = if !isnothing(root.pkg) && !root.loadable
+    @warn "Package $(root.pkg.name) is incomplete. Excluding it from precompilation"
+    [PackageSpec(; name=dep.name, uuid)
+                 for (uuid, dep) in Pkg.dependencies(env)
+                 if !in_sysimage(PkgId(uuid, dep.name))]
+else
+    PackageSpec[]  # Precompile everything
+end
 
+set_distinct_active_project() do
     Pkg.precompile(package_specs; strict=true, timing=true)
 end
 
 cache_paths = filter!(within_depot, compilecache_paths(env))
-
-for (root, dirs, files) in walkdir(joinpath(DEPOT_PATH[1], "compiled", "v$(VERSION.major).$(VERSION.minor)"))
-    for file in files
-        if endswith(file, ".ji")
-            println(joinpath(root, file))
-        end
-    end
-end
 
 # Report the `.ji` files which will be transferred from the cache depot to the final depot.
 #
@@ -320,6 +310,13 @@ for cache_path in cache_paths
     end
 end
 
+# Work around Julia rejecting cache files which are path sensitive.
+# https://github.com/fatteneder/julia/blob/1f161b49532a1d98247a7ccb2d303dee6b5fe246/base/loading.jl#L2893-L2896
+if any((uuid, dep)::Pair -> !isnothing(dep.path), env.manifest.deps)
+    @info "Precompiling path sensitive packages..."
+    Pkg.precompile(package_specs)
+end
+
 # Executes the `__init__` functions of packages by loading them. Doing this ensures that
 # one time package setup that occurs at runtime happens during the Docker build
 # (i.e. creating scrachspace).
@@ -327,8 +324,6 @@ end
 for (uuid, dep) in pairs(Pkg.dependencies(env))
     dep.is_direct_dep || continue
     pkg = PkgId(uuid, dep.name)
-
-    @debug "$(pkg.name): precompiled=$(isprecompiled(pkg)), in_sysimage=$(in_sysimage(pkg))"
 
     # If the copy precompilation file fails to transfer all of the required
     # precompilation files Julia will precompile the package upon the initial loading of
