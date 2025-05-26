@@ -35,8 +35,6 @@ using Dates: Dates, DateTime, @dateformat_str
 using Pkg: Pkg, PackageSpec
 using SHA: sha256
 
-const FIXED_MTIME = DateTime(1970, 1, 1)
-
 # https://github.com/JuliaLang/julia/pull/53906 (e9d25ca09382b0f67a4c7770cba08bff3db3cb38)
 if VERSION >= v"1.11.0-alpha1.76"
     compilecache_path = Base.compilecache_path
@@ -263,6 +261,9 @@ set_distinct_active_project() do
 end
 
 cache_paths = filter!(within_depot, compilecache_paths(env))
+
+@debug "old_cache_paths = $(join(old_cache_paths, '\n'))"
+@debug "cache_paths = $(join(cache_paths, '\n'))"
 foreach(println, compilecache_paths(env))
 
 # Report the `.ji` files which will be transferred from the cache depot to the final depot.
@@ -312,9 +313,6 @@ for cache_path in cache_paths
         end
     end
 end
-
-cmd = `find $cache_depot -name "*Spectral*" -type f`
-@show run(cmd)
 
 # Executes the `__init__` functions of packages by loading them. Doing this ensures that
 # one time package setup that occurs at runtime happens during the Docker build
