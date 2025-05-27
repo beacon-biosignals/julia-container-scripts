@@ -278,14 +278,6 @@ end
 
 cache_paths = filter!(within_depot, compilecache_paths(env))
 
-# for (root, dirs, files) in walkdir(joinpath(DEPOT_PATH[1], "compiled", "v$(VERSION.major).$(VERSION.minor)"))
-#     for file in files
-#         if endswith(file, ".ji")
-#             println(joinpath(root, file))
-#         end
-#     end
-# end
-
 # Report the `.ji` files which will be transferred from the cache depot to the final depot.
 #
 # TODO: We could improve the accuracy of this message by utilizing checksums when
@@ -298,6 +290,19 @@ cache_paths = filter!(within_depot, compilecache_paths(env))
     total = length(cache_paths)
     "Precompile files to transfer (new additions $num_new/$total):\n$(join(paths, '\n'))"
 end
+
+# # Listing all cached precompile files can be useful in debugging unexpected failures but
+# # it can be extremely verbose.
+# @debug let paths = String[]
+#     for (root, dirs, files) in walkdir(joinpath(DEPOT_PATH[1], "compiled", "v$(VERSION.major).$(VERSION.minor)"))
+#         for file in files
+#             if endswith(file, ".ji")
+#                 push!(paths, joinpath(root, file))
+#             end
+#         end
+#     end
+#     "All precompile files within the cache mount:\n$(join(paths, '\n'))"
+# end
 
 # Delete symlink and restore the old compiled directory, if any.
 rm(final_compiled_dir)
