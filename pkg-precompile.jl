@@ -266,8 +266,12 @@ path_tracked_pkgs = [PkgId(uuid, dep.name) for (uuid, dep) in Pkg.dependencies(e
                      if dep.is_tracking_path]
 setdiff!(precompile_pkgs, path_tracked_pkgs)
 
-set_distinct_active_project() do
-    Pkg.precompile([PackageSpec(; p.uuid, p.name) for p in precompile_pkgs]; strict=true, timing=true)
+# Skip precompilation when the package list is empty. Typically, this would make
+# `Pkg.precompile` compile everything.
+if !isempty(precompile_pkgs)
+    set_distinct_active_project() do
+        Pkg.precompile([PackageSpec(; p.uuid, p.name) for p in precompile_pkgs]; strict=true, timing=true)
+    end
 end
 
 cache_paths = filter!(within_depot, compilecache_paths(env))
@@ -328,10 +332,10 @@ for cache_path in cache_paths
     end
 end
 
-# Work around Julia rejecting cache files which are path sensitive.
-# https://github.com/fatteneder/julia/blob/1f161b49532a1d98247a7ccb2d303dee6b5fe246/base/loading.jl#L2893-L2896
+# Work around Julia rejecting cache files which are path tracked.
+# https://github.com/JuliaLang/julia/blob/8f5b7ca12ad48c6d740e058312fc8cf2bbe67848/base/loading.jl#L3777-L3788
 if !isempty(path_tracked_pkgs)
-    @info "Precompiling path sensitive packages..."
+    @info "Precompiling path tracked packages..."
     Pkg.precompile([PackageSpec(; p.uuid, p.name) for p in path_tracked_pkgs]; strict=true, timing=true)
 end
 

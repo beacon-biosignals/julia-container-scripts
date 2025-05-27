@@ -57,6 +57,12 @@ RUN if [ "$GEN_PKG_SRC" = "true" ]; then \
         gen-pkg-src.jl; \
     fi
 
+# Arbitrary code execution before running instantiate.
+ARG BEFORE_INSTANTIATE_CMD=""
+RUN if [ -n "$BEFORE_INSTANTIATE_CMD" ]; then \
+        eval "$BEFORE_INSTANTIATE_CMD"; \
+    fi
+
 # Pass in a random string as a build-arg to force instantiation to run again during a Docker
 # build (e.g. `--build-arg=INVALIDATE_INSTANTIATE=$(openssl rand -hex 20)`).
 ARG INVALIDATE_INSTANTIATE=""
@@ -77,6 +83,10 @@ ARG JULIA_DEPOT_CACHE_TARGET="/mnt/julia-depot"
 
 # Copy package source files before precompilation (if any)
 COPY *src ${JULIA_PROJECT}/src/
+
+# Special copy for a single tracked path in a Manifest.toml.
+ARG COPY_TRACKED_PATH=""
+COPY ${COPY_TRACKED_PATH} ${JULIA_PROJECT}/${COPY_TRACKED_PATH}
 
 # Pass in a random string as a build-arg to force precompilation to run on every Docker
 # build (e.g. `--build-arg=INVALIDATE_PRECOMPILE=$(openssl rand -hex 20)`).

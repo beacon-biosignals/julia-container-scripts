@@ -479,4 +479,31 @@ include("utils.jl")
             @test length(filter(contains(r"\bMultilineStrings\b"), get_cached_ji_files(depot_cache_id))) == 2
         end
     end
+
+    # Julia dependencies which have been added using `Pkg.develop` are referenced with an
+    # absolute or a relative path. The `.ji` files produced from these dependencies are
+    # invalidated by any path changes so the `set_distinct_active_project` fix interferes in
+    # this case. To support dependencies tracked by path we trigger precompilation outside
+    # of the mount cache.
+    @testset "tracked path dependency" begin
+        with_cache_mount(; id_prefix="julia-tracked-path-") do depot_cache_id
+            @test length(get_cached_ji_files(depot_cache_id)) == 0
+
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id,
+                          "BEFORE_INSTANTIATE_CMD" => raw"mkdir -p ${JULIA_PROJECT}/Demo.jl",
+                          "COPY_DIR" => "Demo.jl"]
+
+            image = build(joinpath(@__DIR__, "tracked-path"), build_args)
+            ji_files = get_cached_ji_files(depot_cache_id)
+
+            # Tracked packages should not be included in the cached depot
+            @test length(ji_files) == 0
+
+            # Tracked packages should be precompiled the image depot
+            metadata = pkg_details(image, PkgId(UUID("e92d82a4-9180-4642-a63d-d5464dca6941"), "Demo"))
+            @test metadata.is_precompiled
+            @test startswith(metadata.ji_path, "/usr/local/share/julia-depot/compiled")
+        end
+    end
 end
