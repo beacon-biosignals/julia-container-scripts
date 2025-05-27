@@ -267,7 +267,9 @@ path_tracked_pkgs = [PkgId(uuid, dep.name) for (uuid, dep) in Pkg.dependencies(e
 setdiff!(precompile_pkgs, path_tracked_pkgs)
 
 # Skip precompilation when the package list is empty. Typically, this would make
-# `Pkg.precompile` compile everything.
+# `Pkg.precompile` compile everything. Unfortunately, `Pkg.precompile` on newer versions of
+# Julia (1.11.0+) display the full list of packages to precompile which adds noise to the
+# output.
 if !isempty(precompile_pkgs)
     set_distinct_active_project() do
         Pkg.precompile([PackageSpec(; p.uuid, p.name) for p in precompile_pkgs]; strict=true, timing=true)
