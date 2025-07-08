@@ -309,15 +309,22 @@ function rewrite(cachefile::AbstractString, old_new::Pair{<:AbstractString, <:Ab
                 write(io, depname)
             end
 
-            # Skip `fsize`, `hash`, and `mtime`
-            write(io, read(f, sizeof(UInt64) + sizeof(UInt32) + sizeof(Float64)))
+            # Additional fields were added in Julia 1.11.0 but the `.ji` version number
+            # wasn't updated.
+            # https://github.com/JuliaLang/julia/pull/49866
+            if VERSION < v"1.11.0-DEV.683"
+                # Skip `mtime`
+                write(io, read(f, sizeof(Float64)))
+            else
+                # Skip `fsize`, `hash`, and `mtime`
+                write(io, read(f, sizeof(UInt64) + sizeof(UInt32) + sizeof(Float64)))
+            end
 
             n1 = read(f, Int32)
             write(io, n1)
             if n1 != 0
                 while true
                     n1 = read(f, Int32)
-                    @show n1
                     if n1 == 0
                         write(io, n1)
                         break
