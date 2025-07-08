@@ -294,6 +294,7 @@ function rewrite(cachefile::AbstractString, old_new::Pair{<:AbstractString, <:Ab
                 break
             end
             depname = String(read(f, n2))
+            @show depname
 
             if startswith(depname, old)
                 new_depname = replace(depname, old => new; count=1)
@@ -314,6 +315,7 @@ function rewrite(cachefile::AbstractString, old_new::Pair{<:AbstractString, <:Ab
 
             n1 = read(f, Int32)
             write(io, n1)
+            @show n1
             if n1 != 0
                 while true
                     n1 = read(f, Int32)
