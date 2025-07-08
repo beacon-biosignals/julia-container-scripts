@@ -89,6 +89,11 @@ else
     end
 end
 
+# https://github.com/JuliaLang/julia/pull/53192 (d7b9ac8281cd988ffb5da9b0e7deed23b8d5cb28)
+if VERSION < V"1.11.0-DEV.1589"
+    Base.filesize(io::IOBuffer) = io.size
+end
+
 """
     root_package(env) -> @NamedTuple{pkg::Union{PkgId,Nothing},loadable::Bool}
 
