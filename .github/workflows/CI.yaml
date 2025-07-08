@@ -34,7 +34,6 @@ jobs:
             - 1.11.0  # Earliest 1.11 release
             - 1.11    # Latest 1.11 release 
             - 1.12-nightly
-            - 1.10.8
           project: test
           if-missing: error
 
