@@ -310,20 +310,14 @@ function rewrite(cachefile::AbstractString, old_new::Pair{<:AbstractString, <:Ab
                 write(io, depname)
             end
 
-            # Skip `fsize`, `hash`, and `mtime`
-            # write(io, read(f, sizeof(UInt64) + sizeof(UInt32) + sizeof(Float64)))
-
-            fsize = read(f, UInt64)
-            @show fsize
-            write(io, fsize)
-
-            hash = read(f, UInt32)
-            @show hash
-            write(io, hash)
-
-            mtime = read(f, Float64)
-            @show mtime
-            write(io, mtime)
+            # https://github.com/JuliaLang/julia/pull/49866
+            if VERSION < v"1.11.0-DEV.683"
+                # Skip `mtime`
+                write(io, read(f, sizeof(Float64)))
+            else
+                # Skip `fsize`, `hash`, and `mtime`
+                write(io, read(f, sizeof(UInt64) + sizeof(UInt32) + sizeof(Float64)))
+            end
 
             n1 = read(f, Int32)
             write(io, n1)
