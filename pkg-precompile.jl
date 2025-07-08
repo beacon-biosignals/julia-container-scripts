@@ -30,7 +30,7 @@ if VERSION < v"1.10.0-DEV.1604"
     error("Script $(basename(@__FILE__())) is only supported on Julia 1.10+")
 end
 
-using Base: PkgId, in_sysimage, isprecompiled
+using Base: PkgId, in_sysimage, isprecompiled, isvalid_cache_header
 using Dates: Dates, DateTime, @dateformat_str
 using Pkg: Pkg, PackageSpec
 using SHA: sha256
@@ -220,99 +220,143 @@ function set_distinct_active_project(f)
     end
 end
 
-function rewrite(ji_file, old_new::Pair)
+# https://github.com/JuliaLang/julia/blob/c3282ceaacb3a41dad6da853b7677e404e603c9a/src/staticdata_utils.c#L471
+const JI_MAGIC = b"\373jli\r\n\032\n"
+
+function rewrite(cachefile, old_new::Pair)
     old, new = old_new
     io = IOBuffer()
     mutated = false
 
-    open(ji_file) do f
-        Base.isvalid_cache_header(f)
-        flags = read(f, UInt8)
+    @debug "Rewriting $cachefile"
+    open(cachefile) do f
+        # https://github.com/JuliaLang/julia/blob/c3282ceaacb3a41dad6da853b7677e404e603c9a/src/staticdata_utils.c#L806-L807
+        magic = read(f, sizeof(JI_MAGIC))
+        magic == JI_MAGIC || error("File signature is not for a `.ji` file.")
+
+        # Ensure we are attempting to read `.ji` file with a version we support.
+        format_version = read(f, UInt16)
+        if format_version != 12
+            error("Version $format_version of a `.ji` file is not yet supported")
+        end
+
+        # https://github.com/JuliaLang/julia/blob/760b2e5b7396f9cc0da5efce0cadd5d1974c4069/base/loading.jl#L3412
+        if iszero(isvalid_cache_header(seekstart(f)))
+            throw(ArgumentError("Incompatible header in cache file $cachefile."))
+        end
+
+        # Most of the code below is adapted from `_parse_cache_header`:
+        # https://github.com/JuliaLang/julia/blob/760b2e5b7396f9cc0da5efce0cadd5d1974c4069/base/loading.jl#L3243
+
+        read(f, UInt8) # Skip flags
 
         # Skip modules
         while true
             n = read(f, Int32)
             n == 0 && break
-            seek(f, position(f) + n + 8 + 8 + 8)
+            seek(f, position(f) + n + sizeof(UInt64) + sizeof(UInt64) + sizeof(UInt64))
         end
 
-        @show position(f)
+        # Read total bytes. We'll update this later if we modify `modpath`.
         totbytes_pos = position(f)
         totbytes = Int64(read(f, UInt64)) # total bytes for file dependencies + preferences
         offset = 0
-        @show position(f)
 
-        # Copy original file up to, but not including, the location of `totbytes_pos`
+        @debug "totbytes = $totbytes"
+
+        # Copy original file up to and including`totbytes`.
         seekstart(f)
-        write(io, read(f, totbytes_pos))
+        write(io, read(f, totbytes_pos + sizeof(totbytes)))
+
+        # The end of the section which is tracked by `totbytes`.
+        totbytes_pos_end = totbytes_pos + sizeof(totbytes) + totbytes
 
         # The `srctextpos` occurs right before the end of the `totbytes` section
-        seek(f, totbytes_pos + 8 + totbytes - 8)
-        srctextpos_pos = position(f)
+        srctextpos_pos = totbytes_pos_end - sizeof(Int64)
+        seek(f, srctextpos_pos)
         srctextpos = read(f, Int64)
+        @debug "srctextpos = $srctextpos"
 
-        @info "srctextpos: $srctextpos"
+        seek(f, totbytes_pos + sizeof(totbytes))
+        @assert position(f) == position(io)
 
-        # Update any references to the old within the total bytes section
-        # TODO: We want to make this more precise
-        seek(f, totbytes_pos)
-        last_p = totbytes_pos
-        while !eof(f)
-            # `readuntil` reads until the end of the first found `old`
-            readuntil(f, old)
-            position(f) < (totbytes_pos + 8 + totbytes) || break
-            p = position(f) - length(old) - 4
+        # Update the all `modpath` entries that match our criteria. We'll need to update
+        # `totbytes` to match the updated number of bytes
+        while true
+            n2 = read(f, Int32)
+            if n2 == 0
+                write(io, n2)
+                break
+            end
+            depname = String(read(f, n2))
 
-            seek(f, last_p)
-            write(io, read(f, p - last_p))
+            if startswith(depname, old)
+                new_depname = replace(depname, old => new; count=1)
+                offset += sizeof(new_depname) - n2
 
-            n1 = read(f, Int32)
-            filename = String(read(f, n1))
-            last_p = position(f)
+                @debug "depname: $depname => $new_depname"
 
-            if startswith(filename, old)
-                new_filename = replace(filename, old => new; count=1)
-                offset += length(new_filename) - n1
-                @show new_filename offset
-                write(io, Int32(length(new_filename)))
-                write(io, new_filename)
+                write(io, Int32(sizeof(new_depname)))
+                write(io, new_depname)
                 mutated = true
             else
-                write(io, n1)
-                write(io, filename)
-                @show filename
+                write(io, n2)
+                write(io, depname)
+            end
+
+            # Skip `fsize`, `hash`, and `mtime`
+            write(io, read(f, sizeof(UInt64) + sizeof(UInt32) + sizeof(Float64)))
+
+            n1 = read(f, Int32)
+            write(io, n1)
+            if n1 != 0
+                while true
+                    n1 = read(f, Int32)
+                    @show n1
+                    if n1 == 0
+                        write(io, n1)
+                        break
+                    end
+                    modpath = String(read(f, n1))
+
+                    if startswith(modpath, old)
+                        new_modpath = replace(modpath, old => new; count=1)
+                        offset += sizeof(new_modpath) - n1
+
+                        @debug "modpath: $modpath => $new_modpath"
+
+                        write(io, Int32(sizeof(new_modpath)))
+                        write(io, new_modpath)
+                        mutated = true
+                    else
+                        write(io, n1)
+                        write(io, modpath)
+                    end
+                end
             end
         end
 
-        # Write out the remainder of the section
-        seek(f, last_p)
-        write(io, read(f, totbytes_pos + 8 + totbytes - last_p))
+        # If we've tracked our modications correctly the positions will be off by exactly
+        # the offset.
+        @assert position(f) + offset == position(io)
 
-        @info "$(position(f)), $(position(io))"
+        # Copy unchanged content up to the `srctextpos`
+        write(io, read(f, srctextpos - position(f)))
 
         # Update `totbytes` in place
-        new_totbytes = totbytes + offset
-        @info "totbytes: $totbytes => $new_totbytes"
+        @debug "totbytes: $totbytes => $(totbytes + offset)"
         seek(io, totbytes_pos) # Position is the same in both `f` and `io`
-        write(io, UInt64(new_totbytes))
-
+        write(io, UInt64(totbytes + offset))
         seekend(io)
-        @info "$(position(f)), $(position(io))"
-
-        # Update `srctextpos` in place
-        @info "srctextpos: $srctextpos => $(srctextpos + offset)"
-        seek(io, totbytes_pos + 8 + new_totbytes - 8)
-
-        write(io, Int64(srctextpos + offset))
-
-        @info "$(position(f)), $(position(io))"
-
-        seekend(io)
-
-        @info "$(position(f)), $(position(io))"
+        @assert position(f) + offset == position(io)
 
         if srctextpos != 0
-            write(io, read(f, srctextpos - position(f)))
+            # Update `srctextpos` in place
+            @debug "srctextpos: $srctextpos => $(srctextpos + offset)"
+            seek(io, srctextpos_pos + offset)
+            write(io, Int64(srctextpos + offset))
+            seekend(io)
+            @assert position(f) + offset == position(io)
 
             while !eof(f)
                 filenamelen = read(f, Int32)
@@ -324,6 +368,9 @@ function rewrite(ji_file, old_new::Pair)
 
                 if startswith(filename, old)
                     new_filename = replace(filename, old => new; count=1)
+
+                    @debug "srctext file: $filename => $new_filename"
+
                     write(io, Int32(length(new_filename)))
                     write(io, new_filename)
                     mutated = true
@@ -332,24 +379,25 @@ function rewrite(ji_file, old_new::Pair)
                     write(io, filename)
                 end
 
-                # File content
+                # Copy unchanged file content
                 len = read(f, UInt64)
                 write(io, len)
                 write(io, read(f, len))
             end
         end
 
+       # Copy remainder of the file content
         write(io, read(f))
     end
 
-    # Update the checksum.
-    # Based off of `isvalid_file_crc`
+    # Update the file checksum. Adapted from `isvalid_file_crc`:
+    # https://github.com/JuliaLang/julia/blob/760b2e5b7396f9cc0da5efce0cadd5d1974c4069/base/loading.jl#L3188
     checksum = Base._crc32c(seekstart(io), filesize(io) - 4)
     write(io, UInt32(checksum))
 
     if mutated
         seekstart(io)
-        open(ji_file, "w") do f
+        open(cachefile, "w") do f
             write(f, read(io))
         end
     end
