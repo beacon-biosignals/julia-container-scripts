@@ -228,7 +228,7 @@ end
 # https://github.com/JuliaLang/julia/blob/c3282ceaacb3a41dad6da853b7677e404e603c9a/src/staticdata_utils.c#L471
 const JI_MAGIC = b"\373jli\r\n\032\n"
 
-function rewrite(cachefile, old_new::Pair)
+function rewrite(cachefile::AbstractString, old_new::Pair{<:AbstractString, <:AbstractString})
     old, new = old_new
     io = IOBuffer()
     mutated = false
@@ -262,7 +262,7 @@ function rewrite(cachefile, old_new::Pair)
             seek(f, position(f) + n + sizeof(UInt64) + sizeof(UInt64) + sizeof(UInt64))
         end
 
-        # Read total bytes. We'll update this later if we modify `modpath`.
+        # Read total bytes. We'll update this later if we modify `depname` or `modpath`.
         totbytes_pos = position(f)
         totbytes = Int64(read(f, UInt64)) # total bytes for file dependencies + preferences
         offset = 0
