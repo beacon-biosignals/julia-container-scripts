@@ -28,6 +28,10 @@
 # https://github.com/JuliaLang/julia/pull/50218 (f6f35533f237d55e881276428bef2f091f9cae5b)
 if VERSION < v"1.10.0-DEV.1604"
     error("Script $(basename(@__FILE__())) is only supported on Julia 1.10+")
+elseif VERSION == v"1.10.8"
+    issue_url = "https://github.com/JuliaLang/Pkg.jl/pull/4145"
+    error("Script $(basename(@__FILE__())) does no support Julia 1.10.8 due to " *
+          "precompilation bug. For details see: $issue_url")
 end
 
 using Base: PkgId, in_sysimage, isprecompiled
