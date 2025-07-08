@@ -311,7 +311,19 @@ function rewrite(cachefile::AbstractString, old_new::Pair{<:AbstractString, <:Ab
             end
 
             # Skip `fsize`, `hash`, and `mtime`
-            write(io, read(f, sizeof(UInt64) + sizeof(UInt32) + sizeof(Float64)))
+            # write(io, read(f, sizeof(UInt64) + sizeof(UInt32) + sizeof(Float64)))
+
+            fsize = read(f, UInt64)
+            @show fsize
+            write(io, fsize)
+
+            hash = read(f, UInt32)
+            @show hash
+            write(io, hash)
+
+            mtime = read(f, Float64)
+            @show mtime
+            write(io, mtime)
 
             n1 = read(f, Int32)
             write(io, n1)
