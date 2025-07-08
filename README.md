@@ -43,14 +43,15 @@ RUN julia --color=yes -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); P
 RUN julia -e 'VERSION < v"1.11" || exit(1)' && \
     find "$(julia -e 'println(DEPOT_PATH[1])')/packages" -exec touch -m -t 197001010000 {} \;
 
-# Copy files necessary for precompilation and first initialization.
-COPY src ${JULIA_PROJECT}/src
-COPY *ext ${JULIA_PROJECT}/ext
-
 # Precompile project dependencies using a Docker cache mount which persists between builds.
 RUN --mount=type=cache,id=julia-depot,sharing=shared,target=/mnt/julia-depot \
     curl -fsSLO https://raw.githubusercontent.com/beacon-biosignals/julia-container-scripts/refs/tags/v0.1/pkg-precompile.jl && \
     chmod +x pkg-precompile.jl && \
     ./pkg-precompile.jl "/mnt/julia-depot" && \
     rm pkg-precompile.jl
+
+# Copy files necessary to load package and perform the first initialization.
+COPY src ${JULIA_PROJECT}/src
+COPY *src ${JULIA_PROJECT}/ext
+RUN julia -e 'using Pkg; name = Pkg.Types.EnvCache().project.name; Pkg.precompile(name; timing=true); Base.require(Main, Symbol(name))'
 ```

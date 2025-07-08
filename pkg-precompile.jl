@@ -220,6 +220,141 @@ function set_distinct_active_project(f)
     end
 end
 
+function rewrite(ji_file, old_new::Pair)
+    old, new = old_new
+    io = IOBuffer()
+    mutated = false
+
+    open(ji_file) do f
+        Base.isvalid_cache_header(f)
+        flags = read(f, UInt8)
+
+        # Skip modules
+        while true
+            n = read(f, Int32)
+            n == 0 && break
+            seek(f, position(f) + n + 8 + 8 + 8)
+        end
+
+        @show position(f)
+        totbytes_pos = position(f)
+        totbytes = Int64(read(f, UInt64)) # total bytes for file dependencies + preferences
+        offset = 0
+        @show position(f)
+
+        # Copy original file up to, but not including, the location of `totbytes_pos`
+        seekstart(f)
+        write(io, read(f, totbytes_pos))
+
+        # The `srctextpos` occurs right before the end of the `totbytes` section
+        seek(f, totbytes_pos + 8 + totbytes - 8)
+        srctextpos_pos = position(f)
+        srctextpos = read(f, Int64)
+
+        @info "srctextpos: $srctextpos"
+
+        # Update any references to the old within the total bytes section
+        # TODO: We want to make this more precise
+        seek(f, totbytes_pos)
+        last_p = totbytes_pos
+        while !eof(f)
+            # `readuntil` reads until the end of the first found `old`
+            readuntil(f, old)
+            position(f) < (totbytes_pos + 8 + totbytes) || break
+            p = position(f) - length(old) - 4
+
+            seek(f, last_p)
+            write(io, read(f, p - last_p))
+
+            n1 = read(f, Int32)
+            filename = String(read(f, n1))
+            last_p = position(f)
+
+            if startswith(filename, old)
+                new_filename = replace(filename, old => new; count=1)
+                offset += length(new_filename) - n1
+                @show new_filename offset
+                write(io, Int32(length(new_filename)))
+                write(io, new_filename)
+                mutated = true
+            else
+                write(io, n1)
+                write(io, filename)
+                @show filename
+            end
+        end
+
+        # Write out the remainder of the section
+        seek(f, last_p)
+        write(io, read(f, totbytes_pos + 8 + totbytes - last_p))
+
+        @info "$(position(f)), $(position(io))"
+
+        # Update `totbytes` in place
+        new_totbytes = totbytes + offset
+        @info "totbytes: $totbytes => $new_totbytes"
+        seek(io, totbytes_pos) # Position is the same in both `f` and `io`
+        write(io, UInt64(new_totbytes))
+
+        seekend(io)
+        @info "$(position(f)), $(position(io))"
+
+        # Update `srctextpos` in place
+        @info "srctextpos: $srctextpos => $(srctextpos + offset)"
+        seek(io, totbytes_pos + 8 + new_totbytes - 8)
+
+        write(io, Int64(srctextpos + offset))
+
+        @info "$(position(f)), $(position(io))"
+
+        seekend(io)
+
+        @info "$(position(f)), $(position(io))"
+
+        if srctextpos != 0
+            write(io, read(f, srctextpos - position(f)))
+
+            while !eof(f)
+                filenamelen = read(f, Int32)
+                if filenamelen == 0
+                    write(io, filenamelen)
+                    break
+                end
+                filename = String(read(f, filenamelen))
+
+                if startswith(filename, old)
+                    new_filename = replace(filename, old => new; count=1)
+                    write(io, Int32(length(new_filename)))
+                    write(io, new_filename)
+                    mutated = true
+                else
+                    write(io, filenamelen)
+                    write(io, filename)
+                end
+
+                # File content
+                len = read(f, UInt64)
+                write(io, len)
+                write(io, read(f, len))
+            end
+        end
+
+        write(io, read(f))
+    end
+
+    # Update the checksum.
+    # Based off of `isvalid_file_crc`
+    checksum = Base._crc32c(seekstart(io), filesize(io) - 4)
+    write(io, UInt32(checksum))
+
+    if mutated
+        seekstart(io)
+        open(ji_file, "w") do f
+            write(f, read(io))
+        end
+    end
+end
+
 # Precompile the depot packages using the "compiled" directory from Docker cache mount
 # allowing us to perform precompilation for Julia packages once across all Docker builds on
 # a system.
@@ -258,21 +393,35 @@ if !isnothing(root.pkg)
     end
 end
 
-# Exclude precompiling dependencies tracked with a local path (`Pkg.develop`) as these are
-# not portable and we'll need to precompile these when not using the cache mount. When using
-# `JULIA_DEBUG=loading` you can see messages such as: `Debug: Rejecting cache file *.ji
-# because it is for file /project-abc/x.jl not file  /project/x.jl`.
+# Precompile files for dependencies tracked with a local path (via `Pkg.develop`) include this path
+# internally and moving the source files will invalidate the precompilation files. Using
+# `JULIA_DEBUG=loading` reveals messages such as: `Debug: Rejecting cache file *.ji
+# because it is for file /project-abc/x.jl not file  /project/x.jl`. This is problematic
+# for us
 path_tracked_pkgs = [PkgId(uuid, dep.name) for (uuid, dep) in Pkg.dependencies(env)
                      if dep.is_tracking_path]
-setdiff!(precompile_pkgs, path_tracked_pkgs)
 
 # Skip precompilation when the package list is empty. Typically, this would make
 # `Pkg.precompile` compile everything. Unfortunately, `Pkg.precompile` on newer versions of
 # Julia (1.11.0+) display the full list of packages to precompile which adds noise to the
 # output.
 if !isempty(precompile_pkgs)
+    project_dir = dirname(Base.active_project())
+
+    # Modify the Julia project to ensure precompile file slugs are unique for each Docker
+    # image.
     set_distinct_active_project() do
         Pkg.precompile([PackageSpec(; p.uuid, p.name) for p in precompile_pkgs]; strict=true, timing=true)
+
+        # Precompilation files for dependencies tracked with a local path
+        # (via `Pkg.develop`) are invalidated when the tracked source location is changed.
+        tmp_project_dir = dirname(Base.active_project())
+        for pkg in path_tracked_pkgs
+            path = compilecache_path(pkg)
+            !isnothing(path) || continue
+
+            rewrite(path, tmp_project_dir => project_dir)
+        end
     end
 end
 
@@ -337,13 +486,6 @@ for cache_path in cache_paths
             end
         end
     end
-end
-
-# Work around Julia rejecting cache files which are path tracked.
-# https://github.com/JuliaLang/julia/blob/8f5b7ca12ad48c6d740e058312fc8cf2bbe67848/base/loading.jl#L3777-L3788
-if !isempty(path_tracked_pkgs)
-    @info "Precompiling path tracked packages..."
-    Pkg.precompile([PackageSpec(; p.uuid, p.name) for p in path_tracked_pkgs]; strict=true, timing=true)
 end
 
 # Executes the `__init__` functions of packages by loading them. Doing this ensures that
