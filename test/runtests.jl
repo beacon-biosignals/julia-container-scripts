@@ -497,9 +497,8 @@ include("utils.jl")
             image = build(joinpath(@__DIR__, "tracked-path"), build_args)
             ji_files = get_cached_ji_files(depot_cache_id)
 
-            # Tracked packages should be included in the cached depot
-            @test length(ji_files) == 1
-            @test "Demo" in basename.(dirname.(ji_files))
+            # Tracked packages should not be included in the cached depot
+            @test length(ji_files) == 0
 
             # Tracked packages should be precompiled the image depot
             metadata = pkg_details(image, PkgId(UUID("e92d82a4-9180-4642-a63d-d5464dca6941"), "Demo"))
