@@ -483,9 +483,8 @@ include("utils.jl")
     # Julia dependencies which have been added using `Pkg.develop` are referenced with an
     # absolute or a relative path. The `.ji` files produced from these dependencies are
     # invalidated by any source path changes so the `set_distinct_active_project` fix
-    # interferes in this case. To support dependencies tracked by path we rewrite the `.ji`
-    # file content to use the original project path but still use the distinct project path
-    # for the `.ji` file name to avoid collisions.
+    # interferes in this case. To support dependencies tracked by path we trigger
+    # precompilation outside of the mount cache.
     @testset "tracked path dependency" begin
         with_cache_mount(; id_prefix="julia-tracked-path-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
