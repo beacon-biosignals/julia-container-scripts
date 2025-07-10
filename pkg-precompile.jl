@@ -21,17 +21,19 @@
 #   "packages" directory within this script as doing so creates unnecessary image bloat if
 #   this Docker step occurs in a separate statement from instantiation (for Julia < v1.11).
 
-# Limit the Julia versions which can run this script. We have this restriction as this is
-# the first version of Julia to define `Base.isprecompiled` which is a critical self-check
-# part of this script.
+# Limit the Julia versions which can run this script. We have this restriction because:
 #
-# https://github.com/JuliaLang/julia/pull/50218 (f6f35533f237d55e881276428bef2f091f9cae5b)
-if VERSION < v"1.10.0-DEV.1604"
-    error("Script $(basename(@__FILE__())) is only supported on Julia 1.10+")
-elseif VERSION == v"1.10.8"
-    issue_url = "https://github.com/JuliaLang/Pkg.jl/pull/4145"
-    error("Script $(basename(@__FILE__())) does no support Julia 1.10.8 due to " *
-          "precompilation bug. For details see: $issue_url")
+# - v"1.10.0-DEV.1604": The first version of Julia to define `Base.isprecompiled`.
+#   (https://github.com/JuliaLang/julia/pull/50218)
+# - v"1.10.9": Julia 1.10.8 utilized changes from https://github.com/JuliaLang/Pkg.jl/pull/4107
+#   (https://github.com/JuliaLang/julia/pull/57225) which included a precompilation bug. The
+#   but was fixed in https://github.com/JuliaLang/Pkg.jl/pull/4145 which was included in
+#   Julia 1.10.9.
+#
+# We could support Julia 1.10.0 - 1.10.7 as well but we've choosen to limit support for
+# 1.10.9+ for simplicity.
+if VERSION < v"1.10.9"
+    error("Script $(basename(@__FILE__())) is only supported on Julia 1.10.9+")
 end
 
 using Base: PkgId, in_sysimage, isprecompiled

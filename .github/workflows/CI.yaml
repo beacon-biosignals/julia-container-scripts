@@ -29,7 +29,6 @@ jobs:
           versions: |
             - min     # Oldest supported version
             - lts     # Long-Term Stable
-            - 1.10.0  # Earliest 1.10 release
             - 1.10    # Latest 1.10 release
             - 1.11.0  # Earliest 1.11 release
             - 1.11    # Latest 1.11 release 
