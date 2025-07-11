@@ -1,0 +1,19 @@
+# This file is machine-generated - editing it directly is not advised
+
+julia_version = "1.10.0"
+manifest_format = "2.0"
+project_hash = "843bddbf3ba93d1952754ce294e9b95344829975"
+
+[[deps.Demo]]
+deps = ["Random"]
+path = "Demo.jl"
+uuid = "e92d82a4-9180-4642-a63d-d5464dca6941"
+version = "1.0.0"
+
+[[deps.Random]]
+deps = ["SHA"]
+uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+
+[[deps.SHA]]
+uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
+version = "0.7.0"

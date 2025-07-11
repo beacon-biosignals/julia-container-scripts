@@ -52,5 +52,6 @@ RUN --mount=type=cache,id=julia-depot,sharing=shared,target=/mnt/julia-depot \
 
 # Copy files necessary to load package and perform the first initialization.
 COPY src ${JULIA_PROJECT}/src
+COPY *ext ${JULIA_PROJECT}/ext
 RUN julia -e 'using Pkg; name = Pkg.Types.EnvCache().project.name; Pkg.precompile(name; timing=true); Base.require(Main, Symbol(name))'
 ```

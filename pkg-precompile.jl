@@ -36,12 +36,10 @@ if VERSION < v"1.10.9"
     error("Script $(basename(@__FILE__())) is only supported on Julia 1.10.9+")
 end
 
-using Base: PkgId, in_sysimage, isprecompiled
+using Base: PkgId, in_sysimage, isprecompiled, isvalid_cache_header
 using Dates: Dates, DateTime, @dateformat_str
 using Pkg: Pkg, PackageSpec
 using SHA: sha256
-
-const FIXED_MTIME = DateTime(1970, 1, 1)
 
 # https://github.com/JuliaLang/julia/pull/53906 (e9d25ca09382b0f67a4c7770cba08bff3db3cb38)
 if VERSION >= v"1.11.0-alpha1.76"
@@ -252,20 +250,38 @@ symlink(cache_compiled_dir, final_compiled_dir)
 # Record the pre-existing precompile cache files which exist in the cache mount.
 old_cache_paths = filter!(within_depot, compilecache_paths(env))
 
-set_distinct_active_project() do
-    # When a root package is defined but can not be loaded we need to exclude it from the
-    # packages which are precompiled.
-    root = root_package(env)
-    package_specs = if !isnothing(root.pkg) && !root.loadable
-        @warn "Package $(root.pkg.name) is incomplete. Excluding it from precompilation"
-        [PackageSpec(; name=dep.name, uuid)
-                     for (uuid, dep) in Pkg.dependencies(env)
-                     if !in_sysimage(PkgId(uuid, dep.name))]
-    else
-        PackageSpec[]  # Precompile everything
-    end
+precompile_pkgs = filter!(!in_sysimage, [PkgId(uuid, dep.name)
+                                         for (uuid, dep) in Pkg.dependencies(env)])
 
-    Pkg.precompile(package_specs; strict=true, timing=true)
+# When a root package is defined but can not be loaded we need to exclude it from the
+# packages which are precompiled.
+root = root_package(env)
+if !isnothing(root.pkg)
+    if root.loadable
+        push!(precompile_pkgs, root.pkg)
+    else
+        @warn "Package $(root.pkg.name) is incomplete. Excluding it from precompilation"
+    end
+end
+
+# Precompile files for dependencies tracked with a local path (via `Pkg.develop`) include this path
+# internally and moving the source files will invalidate the precompilation files. Using
+# `JULIA_DEBUG=loading` reveals messages such as: `Debug: Rejecting cache file *.ji
+# because it is for file /project-abc/x.jl not file  /project/x.jl`.
+path_tracked_pkgs = [PkgId(uuid, dep.name) for (uuid, dep) in Pkg.dependencies(env)
+                     if dep.is_tracking_path]
+setdiff!(precompile_pkgs, path_tracked_pkgs)
+
+# Skip precompilation when the package list is empty. Typically, this would make
+# `Pkg.precompile` compile everything. Unfortunately, `Pkg.precompile` on newer versions of
+# Julia (1.11.0+) display the full list of packages to precompile which adds noise to the
+# output.
+if !isempty(precompile_pkgs)
+    # Modify the Julia project to ensure precompile file slugs are unique for each Docker
+    # image.
+    set_distinct_active_project() do
+        Pkg.precompile([PackageSpec(; p.uuid, p.name) for p in precompile_pkgs]; strict=true, timing=true)
+    end
 end
 
 cache_paths = filter!(within_depot, compilecache_paths(env))
@@ -282,6 +298,19 @@ cache_paths = filter!(within_depot, compilecache_paths(env))
     total = length(cache_paths)
     "Precompile files to transfer (new additions $num_new/$total):\n$(join(paths, '\n'))"
 end
+
+# # Listing all cached precompile files can be useful in debugging unexpected failures but
+# # it can be extremely verbose.
+# @debug let paths = String[]
+#     for (root, dirs, files) in walkdir(joinpath(DEPOT_PATH[1], "compiled", "v$(VERSION.major).$(VERSION.minor)"))
+#         for file in files
+#             if endswith(file, ".ji")
+#                 push!(paths, joinpath(root, file))
+#             end
+#         end
+#     end
+#     "All precompile files within the cache mount:\n$(join(paths, '\n'))"
+# end
 
 # Delete symlink and restore the old compiled directory, if any.
 rm(final_compiled_dir)
@@ -316,6 +345,13 @@ for cache_path in cache_paths
             end
         end
     end
+end
+
+# Work around Julia rejecting cache files which are path tracked.
+# https://github.com/JuliaLang/julia/blob/8f5b7ca12ad48c6d740e058312fc8cf2bbe67848/base/loading.jl#L3777-L3788
+if !isempty(path_tracked_pkgs)
+    @info "Precompiling path tracked packages..."
+    Pkg.precompile([PackageSpec(; p.uuid, p.name) for p in path_tracked_pkgs]; strict=true, timing=true)
 end
 
 # Executes the `__init__` functions of packages by loading them. Doing this ensures that

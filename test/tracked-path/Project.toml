@@ -1,0 +1,5 @@
+[deps]
+Demo = "e92d82a4-9180-4642-a63d-d5464dca6941"
+
+[compat]
+Demo = "1"
