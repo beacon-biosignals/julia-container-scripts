@@ -95,6 +95,11 @@ else
     end
 end
 
+# https://github.com/JuliaLang/julia/pull/53192 (d7b9ac8281cd988ffb5da9b0e7deed23b8d5cb28)
+if VERSION < v"1.11.0-DEV.1589"
+    Base.filesize(io::IOBuffer) = io.size
+end
+
 """
     root_package(env) -> @NamedTuple{pkg::Union{PkgId,Nothing},loadable::Bool}
 
@@ -226,6 +231,196 @@ function set_distinct_active_project(f)
     end
 end
 
+# https://github.com/JuliaLang/julia/blob/c3282ceaacb3a41dad6da853b7677e404e603c9a/src/staticdata_utils.c#L471
+const JI_MAGIC = b"\373jli\r\n\032\n"
+
+function rewrite(cachefile::AbstractString, old_new::Pair{<:AbstractString, <:AbstractString})
+    old, new = old_new
+    io = IOBuffer()
+    mutated = false
+
+    @debug "Rewriting $cachefile"
+    open(cachefile) do f
+        # https://github.com/JuliaLang/julia/blob/c3282ceaacb3a41dad6da853b7677e404e603c9a/src/staticdata_utils.c#L806-L807
+        magic = read(f, sizeof(JI_MAGIC))
+        magic == JI_MAGIC || error("File signature is not for a `.ji` file.")
+
+        # Ensure we are attempting to read `.ji` file with a version we support.
+        format_version = read(f, UInt16)
+        if format_version != 12
+            error("Version $format_version of a `.ji` file is not yet supported")
+        end
+
+        # https://github.com/JuliaLang/julia/blob/760b2e5b7396f9cc0da5efce0cadd5d1974c4069/base/loading.jl#L3412
+        if iszero(isvalid_cache_header(seekstart(f)))
+            throw(ArgumentError("Incompatible header in cache file $cachefile."))
+        end
+
+        # Most of the code below is adapted from `_parse_cache_header`:
+        # https://github.com/JuliaLang/julia/blob/760b2e5b7396f9cc0da5efce0cadd5d1974c4069/base/loading.jl#L3243
+
+        read(f, UInt8) # Skip flags
+
+        # Skip modules
+        while true
+            n = read(f, Int32)
+            n == 0 && break
+            seek(f, position(f) + n + sizeof(UInt64) + sizeof(UInt64) + sizeof(UInt64))
+        end
+
+        # Read total bytes. We'll update this later if we modify `depname` or `modpath`.
+        totbytes_pos = position(f)
+        totbytes = Int64(read(f, UInt64)) # total bytes for file dependencies + preferences
+        offset = 0
+
+        @debug "totbytes = $totbytes"
+
+        # Copy original file up to and including`totbytes`.
+        seekstart(f)
+        write(io, read(f, totbytes_pos + sizeof(totbytes)))
+
+        # The end of the section which is tracked by `totbytes`.
+        totbytes_pos_end = totbytes_pos + sizeof(totbytes) + totbytes
+
+        # The `srctextpos` occurs right before the end of the `totbytes` section
+        srctextpos_pos = totbytes_pos_end - sizeof(Int64)
+        seek(f, srctextpos_pos)
+        srctextpos = read(f, Int64)
+        @debug "srctextpos = $srctextpos"
+
+        seek(f, totbytes_pos + sizeof(totbytes))
+        @assert position(f) == position(io)
+
+        # Update the all `modpath` entries that match our criteria. We'll need to update
+        # `totbytes` to match the updated number of bytes
+        while true
+            n2 = read(f, Int32)
+            if n2 == 0
+                write(io, n2)
+                break
+            end
+            depname = String(read(f, n2))
+
+            if startswith(depname, old)
+                new_depname = replace(depname, old => new; count=1)
+                offset += sizeof(new_depname) - n2
+
+                @debug "depname: $depname => $new_depname"
+
+                write(io, Int32(sizeof(new_depname)))
+                write(io, new_depname)
+                mutated = true
+            else
+                write(io, n2)
+                write(io, depname)
+            end
+
+            # Additional fields were added in Julia 1.11.0 but the `.ji` version number
+            # wasn't updated.
+            # https://github.com/JuliaLang/julia/pull/49866
+            if VERSION < v"1.11.0-DEV.683"
+                # Skip `mtime`
+                write(io, read(f, sizeof(Float64)))
+            else
+                # Skip `fsize`, `hash`, and `mtime`
+                write(io, read(f, sizeof(UInt64) + sizeof(UInt32) + sizeof(Float64)))
+            end
+
+            n1 = read(f, Int32)
+            write(io, n1)
+            if n1 != 0
+                while true
+                    n1 = read(f, Int32)
+                    if n1 == 0
+                        write(io, n1)
+                        break
+                    end
+                    modpath = String(read(f, n1))
+
+                    if startswith(modpath, old)
+                        new_modpath = replace(modpath, old => new; count=1)
+                        offset += sizeof(new_modpath) - n1
+
+                        @debug "modpath: $modpath => $new_modpath"
+
+                        write(io, Int32(sizeof(new_modpath)))
+                        write(io, new_modpath)
+                        mutated = true
+                    else
+                        write(io, n1)
+                        write(io, modpath)
+                    end
+                end
+            end
+        end
+
+        # If we've tracked our modications correctly the positions will be off by exactly
+        # the offset.
+        @assert position(f) + offset == position(io)
+
+        # Copy unchanged content up to the `srctextpos`
+        write(io, read(f, srctextpos - position(f)))
+
+        # Update `totbytes` in place
+        @debug "totbytes: $totbytes => $(totbytes + offset)"
+        seek(io, totbytes_pos) # Position is the same in both `f` and `io`
+        write(io, UInt64(totbytes + offset))
+        seekend(io)
+        @assert position(f) + offset == position(io)
+
+        if srctextpos != 0
+            # Update `srctextpos` in place
+            @debug "srctextpos: $srctextpos => $(srctextpos + offset)"
+            seek(io, srctextpos_pos + offset)
+            write(io, Int64(srctextpos + offset))
+            seekend(io)
+            @assert position(f) + offset == position(io)
+
+            while !eof(f)
+                filenamelen = read(f, Int32)
+                if filenamelen == 0
+                    write(io, filenamelen)
+                    break
+                end
+                filename = String(read(f, filenamelen))
+
+                if startswith(filename, old)
+                    new_filename = replace(filename, old => new; count=1)
+
+                    @debug "srctext file: $filename => $new_filename"
+
+                    write(io, Int32(length(new_filename)))
+                    write(io, new_filename)
+                    mutated = true
+                else
+                    write(io, filenamelen)
+                    write(io, filename)
+                end
+
+                # Copy unchanged file content
+                len = read(f, UInt64)
+                write(io, len)
+                write(io, read(f, len))
+            end
+        end
+
+       # Copy remainder of the file content
+        write(io, read(f))
+    end
+
+    # Update the file checksum. Adapted from `isvalid_file_crc`:
+    # https://github.com/JuliaLang/julia/blob/760b2e5b7396f9cc0da5efce0cadd5d1974c4069/base/loading.jl#L3188
+    checksum = Base._crc32c(seekstart(io), filesize(io) - 4)
+    write(io, UInt32(checksum))
+
+    if mutated
+        seekstart(io)
+        open(cachefile, "w") do f
+            write(f, read(io))
+        end
+    end
+end
+
 # Precompile the depot packages using the "compiled" directory from Docker cache mount
 # allowing us to perform precompilation for Julia packages once across all Docker builds on
 # a system.
@@ -270,17 +465,28 @@ end
 # because it is for file /project-abc/x.jl not file  /project/x.jl`.
 path_tracked_pkgs = [PkgId(uuid, dep.name) for (uuid, dep) in Pkg.dependencies(env)
                      if dep.is_tracking_path]
-setdiff!(precompile_pkgs, path_tracked_pkgs)
 
 # Skip precompilation when the package list is empty. Typically, this would make
 # `Pkg.precompile` compile everything. Unfortunately, `Pkg.precompile` on newer versions of
 # Julia (1.11.0+) display the full list of packages to precompile which adds noise to the
 # output.
 if !isempty(precompile_pkgs)
+    project_dir = dirname(Base.active_project())
+
     # Modify the Julia project to ensure precompile file slugs are unique for each Docker
     # image.
     set_distinct_active_project() do
         Pkg.precompile([PackageSpec(; p.uuid, p.name) for p in precompile_pkgs]; strict=true, timing=true)
+
+        # Precompilation files for dependencies tracked with a local path
+        # (via `Pkg.develop`) are invalidated when the tracked source location is changed.
+        tmp_project_dir = dirname(Base.active_project())
+        for pkg in path_tracked_pkgs
+            path = compilecache_path(pkg)
+            !isnothing(path) || continue
+
+            rewrite(path, tmp_project_dir => project_dir)
+        end
     end
 end
 
@@ -345,13 +551,6 @@ for cache_path in cache_paths
             end
         end
     end
-end
-
-# Work around Julia rejecting cache files which are path tracked.
-# https://github.com/JuliaLang/julia/blob/8f5b7ca12ad48c6d740e058312fc8cf2bbe67848/base/loading.jl#L3777-L3788
-if !isempty(path_tracked_pkgs)
-    @info "Precompiling path tracked packages..."
-    Pkg.precompile([PackageSpec(; p.uuid, p.name) for p in path_tracked_pkgs]; strict=true, timing=true)
 end
 
 # Executes the `__init__` functions of packages by loading them. Doing this ensures that
