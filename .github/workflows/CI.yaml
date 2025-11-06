@@ -32,7 +32,9 @@ jobs:
             - 1.10    # Latest 1.10 release
             - 1.11.0  # Earliest 1.11 release
             - 1.11    # Latest 1.11 release 
-            - 1.12-nightly
+            - 1.12.0  # Earliest 1.12 release
+            - 1.12    # Latest 1.12 release
+            - 1.13-nightly
           project: test
           if-missing: error
 
