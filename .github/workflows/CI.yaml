@@ -34,7 +34,7 @@ jobs:
             - 1.11    # Latest 1.11 release 
             - 1.12.0  # Earliest 1.12 release
             - 1.12    # Latest 1.12 release
-            - 1.13-nightly
+            # - 1.13-nightly  # No corresponding Docker image currently exists (2025-11-06)
           project: test
           if-missing: error
 
