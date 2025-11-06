@@ -8,10 +8,11 @@ using UUIDs: UUID
 # https://hub.docker.com/_/julia/tags?name=1.12.0-beta4-bookworm
 const JULIA_VERSION = if VERSION == Base.thispatch(VERSION)
     string(VERSION)
-elseif v"1.12.0-" <= VERSION <= v"1.12.0"
+elseif v"1.12.0-" <= VERSION < v"1.12.0"
     "1.12.0-beta4"
 else
-    error("Pre-release versions of Julia need to specify their corresponding Docker tag")
+    error("Pre-release version of Julia ($VERSION) requires a hard-coded rule specifying " *
+          "the corresponding Docker tag")
 end
 
 # These versions of Julia require a `src/$(name).jl` to be present to instantiate a named
