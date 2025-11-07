@@ -273,8 +273,8 @@ path_tracked_pkgs = [PkgId(uuid, dep.name) for (uuid, dep) in Pkg.dependencies(e
 setdiff!(precompile_pkgs, path_tracked_pkgs)
 
 # Julia 1.12.1 no longer allows initiating precompilation for packages which are indirect
-# dependencies. It seems reasonable take this approach for all versions of Julia.
-# This change was added in https://github.com/JuliaLang/julia/pull/59212
+# dependencies. It is probably reasonable to use this approach on all versions of Julia. We
+# can make that call once we get feedback on: https://github.com/JuliaLang/julia/issues/60077
 if VERSION >= v"1.12.1"
     indirect_dep_pkgs = [PkgId(uuid, dep.name) for (uuid, dep) in Pkg.dependencies(env)
                      if !dep.is_direct_dep]
