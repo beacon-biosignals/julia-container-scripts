@@ -2,10 +2,17 @@ using Base: PkgId
 using Test
 using UUIDs: UUID
 
-const JULIA_VERSION = if v"1.12.0-" <= VERSION <= v"1.12.0"
-    "1.12.0-beta1"
-else
+# Needs to to match a Docker tag for the `julia` image
+# (i.e. `julia:$(JULIA_VERSION)-bookworm`). For pre-releases a manual tag rule can be added
+# here by searching the Docker Hub website for a corresponding tag:
+# https://hub.docker.com/_/julia/tags?name=1.12.0-beta4-bookworm
+const JULIA_VERSION = if VERSION == Base.thispatch(VERSION)
     string(VERSION)
+elseif v"1.12.0-" <= VERSION < v"1.12.0"
+    "1.12.0-beta4"
+else
+    error("Pre-release version of Julia ($VERSION) requires a hard-coded rule specifying " *
+          "the corresponding Docker tag")
 end
 
 # These versions of Julia require a `src/$(name).jl` to be present to instantiate a named

@@ -272,6 +272,15 @@ path_tracked_pkgs = [PkgId(uuid, dep.name) for (uuid, dep) in Pkg.dependencies(e
                      if dep.is_tracking_path]
 setdiff!(precompile_pkgs, path_tracked_pkgs)
 
+# Julia 1.12.1 no longer allows initiating precompilation for packages which are indirect
+# dependencies. It is probably reasonable to use this approach on all versions of Julia. We
+# can make that call once we get feedback on: https://github.com/JuliaLang/julia/issues/60077
+if VERSION >= v"1.12.1"
+    indirect_dep_pkgs = [PkgId(uuid, dep.name) for (uuid, dep) in Pkg.dependencies(env)
+                         if !dep.is_direct_dep]
+    setdiff!(precompile_pkgs, indirect_dep_pkgs)
+end
+
 # Skip precompilation when the package list is empty. Typically, this would make
 # `Pkg.precompile` compile everything. Unfortunately, `Pkg.precompile` on newer versions of
 # Julia (1.11.0+) display the full list of packages to precompile which adds noise to the
