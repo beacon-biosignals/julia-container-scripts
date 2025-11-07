@@ -277,7 +277,7 @@ setdiff!(precompile_pkgs, path_tracked_pkgs)
 # can make that call once we get feedback on: https://github.com/JuliaLang/julia/issues/60077
 if VERSION >= v"1.12.1"
     indirect_dep_pkgs = [PkgId(uuid, dep.name) for (uuid, dep) in Pkg.dependencies(env)
-                     if !dep.is_direct_dep]
+                         if !dep.is_direct_dep]
     setdiff!(precompile_pkgs, indirect_dep_pkgs)
 end
 
