@@ -91,11 +91,11 @@ function main()
     env = Pkg.Types.EnvCache()
     stub_paths = String[]
 
-    (; generate_project_stub) = parse_args(ARGS)
-    if generate_project_stub
+    flag = parse_args(ARGS)
+    if flag.generate_project_stub
         @info "Generating project stub..."
-        root_stub_path = generate_project_stub(env)
-        root_stub_path !== nothing && push!(stub_paths, root_stub_path)
+        project_stub_path = generate_project_stub(env)
+        project_stub_path !== nothing && push!(stub_paths, project_stub_path)
     end
 
     @info "Generating dependency stubs..."
