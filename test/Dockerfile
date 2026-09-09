@@ -85,7 +85,10 @@ ARG JULIA_DEPOT_CACHE_TARGET="/mnt/julia-depot"
 COPY *src ${JULIA_PROJECT}/src/
 
 # Special copy for a single tracked path in a Manifest.toml.
-ARG COPY_TRACKED_PATH=""
+#
+# Defaults to a glob which matches nothing. Using `ARG COPY_TRACKED_PATH=""` would cause
+# Docker to copy the entire build context.
+ARG COPY_TRACKED_PATH="*.noop"
 COPY ${COPY_TRACKED_PATH} ${JULIA_PROJECT}/${COPY_TRACKED_PATH}
 
 # Pass in a random string as a build-arg to force precompilation to run on every Docker
