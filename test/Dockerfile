@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 ARG JULIA_VERSION=1.11.0
 FROM julia:${JULIA_VERSION}-bookworm AS julia-base
 
@@ -49,12 +51,18 @@ ARG JULIA_PROJECT="/project"
 ENV JULIA_PROJECT="${JULIA_PROJECT}"
 COPY Project.toml *Manifest.toml ${JULIA_PROJECT}/
 
-# Julia 1.10.0 - 1.10.6 and 1.11.0 all require this source file to be present when 
-# instantiating a named project.
-ARG GEN_PKG_SRC="false"
-COPY gen-pkg-src.jl /usr/local/bin
-RUN if [ "$GEN_PKG_SRC" = "true" ]; then \
-        gen-pkg-src.jl; \
+# Generate stub sources for the active project (if named but missing a `src/<name>.jl` —
+# required to instantiate a named project on Julia 1.10.0 - 1.10.6 and 1.11.0) and for
+# Manifest dependencies tracked via a local path which are not yet present on disk (e.g.
+# before real source has been copied in).
+#
+# Disable network access (`--network=none`) to ensure that package credentials are not
+# required (would require `--mount=type=secret,...`) by `gen-pkg-stubs.jl`.
+ARG GENERATE_STUBS="false"
+COPY gen-pkg-stubs.jl /usr/local/bin
+RUN --network=none \
+    if [ "$GENERATE_STUBS" = "true" ]; then \
+        gen-pkg-stubs.jl; \
     fi
 
 # Arbitrary code execution before running instantiate.
@@ -85,7 +93,10 @@ ARG JULIA_DEPOT_CACHE_TARGET="/mnt/julia-depot"
 COPY *src ${JULIA_PROJECT}/src/
 
 # Special copy for a single tracked path in a Manifest.toml.
-ARG COPY_TRACKED_PATH=""
+#
+# Defaults to a glob which matches nothing. Using `ARG COPY_TRACKED_PATH=""` would cause
+# Docker to copy the entire build context.
+ARG COPY_TRACKED_PATH="*.noop"
 COPY ${COPY_TRACKED_PATH} ${JULIA_PROJECT}/${COPY_TRACKED_PATH}
 
 # Pass in a random string as a build-arg to force precompilation to run on every Docker

@@ -17,7 +17,7 @@ end
 
 # These versions of Julia require a `src/$(name).jl` to be present to instantiate a named
 # Julia project.
-const GEN_PKG_SRC = v"1.10.0" <= VERSION <= v"1.10.6" || VERSION == v"1.11.0"
+const GENERATE_PROJECT_STUB = v"1.10.0" <= VERSION <= v"1.10.6" || VERSION == v"1.11.0"
 
 include("utils.jl")
 
@@ -353,7 +353,7 @@ include("utils.jl")
 
             build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id,
-                          "GEN_PKG_SRC" => string(GEN_PKG_SRC)]
+                          "GENERATE_STUBS" => string(GENERATE_PROJECT_STUB)]
 
             image = build(joinpath(@__DIR__, "named-project"), build_args)
             ji_files = get_cached_ji_files(depot_cache_id)
@@ -376,14 +376,14 @@ include("utils.jl")
 
             build_args = ["JULIA_VERSION" => JULIA_VERSION,
                           "JULIA_DEPOT_CACHE_ID" => depot_cache_id,
-                          "GEN_PKG_SRC" => string(GEN_PKG_SRC)]
+                          "GENERATE_STUBS" => string(GENERATE_PROJECT_STUB)]
 
             image = build(joinpath(@__DIR__, "named-project-no-src"), build_args)
             ji_files = get_cached_ji_files(depot_cache_id)
 
-            # A precompilation file will be created when `gen-pkg-src.jl` is used.
-            @test length(ji_files) == (GEN_PKG_SRC ? 2 : 1)
-            if GEN_PKG_SRC
+            # A precompilation file will be created when `gen-pkg-stubs.jl` is used.
+            @test length(ji_files) == (GENERATE_PROJECT_STUB ? 2 : 1)
+            if GENERATE_PROJECT_STUB
                 @test "Demo" in basename.(dirname.(ji_files))
             else
                 @test !("Demo" in basename.(dirname.(ji_files)))
@@ -539,6 +539,65 @@ include("utils.jl")
             metadata = pkg_details(image, PkgId(UUID("e92d82a4-9180-4642-a63d-d5464dca6941"), "Demo"))
             @test metadata.is_precompiled
             @test startswith(metadata.ji_path, "/usr/local/share/julia-depot/compiled")
+        end
+    end
+
+    # When the real source for a path-tracked dependency isn't present in the build context
+    # yet (e.g. deferred to preserve Docker layer caching for earlier layers), running
+    # `gen-pkg-stubs.jl` before instantiation should generate a stub module so that
+    # instantiation/build/precompilation still succeed.
+    @testset "tracked path dependency stub" begin
+        with_cache_mount(; id_prefix="julia-tracked-path-stub-") do depot_cache_id
+            @test length(get_cached_ji_files(depot_cache_id)) == 0
+
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id,
+                          "GENERATE_STUBS" => "true"]
+
+            image = build(joinpath(@__DIR__, "tracked-path"), build_args)
+            ji_files = get_cached_ji_files(depot_cache_id)
+
+            # Tracked packages should not be included in the cached depot
+            @test length(ji_files) == 0
+
+            # The stub module should have been precompiled into the image depot
+            metadata = pkg_details(image, PkgId(UUID("e92d82a4-9180-4642-a63d-d5464dca6941"), "Demo"))
+            @test metadata.is_precompiled
+            @test startswith(metadata.ji_path, "/usr/local/share/julia-depot/compiled")
+        end
+    end
+
+    # A path-tracked dependency may itself declare package extensions. `gen-pkg-stubs.jl`
+    # should generate a stub for the dependency as well as for each of its extensions.
+    @testset "tracked path dependency with extension stub" begin
+        with_cache_mount(; id_prefix="julia-tracked-path-extension-stub-") do depot_cache_id
+            @test length(get_cached_ji_files(depot_cache_id)) == 0
+
+            build_args = ["JULIA_VERSION" => JULIA_VERSION,
+                          "JULIA_DEPOT_CACHE_ID" => depot_cache_id,
+                          "GENERATE_STUBS" => "true"]
+
+            image = build(joinpath(@__DIR__, "tracked-path-extension"), build_args)
+            ji_files = get_cached_ji_files(depot_cache_id)
+
+            # Tracked packages should not be included in the cached depot
+            @test length(ji_files) == 0
+
+            demo_uuid = UUID("e92d82a4-9180-4642-a63d-d5464dca6941")
+
+            # The dependency's own stub module should have been precompiled into the image
+            # depot.
+            metadata = pkg_details(image, PkgId(demo_uuid, "Demo"))
+            @test metadata.is_precompiled
+            @test startswith(metadata.ji_path, "/usr/local/share/julia-depot/compiled")
+
+            # The extension's stub module should have been precompiled into the image depot
+            # too. Extension UUIDs are deterministically derived from the parent UUID and
+            # extension name (see `pkg-precompile.jl`'s `compilecache_paths`).
+            ext_pkg = PkgId(Base.uuid5(demo_uuid, "DemoSerializationExt"), "DemoSerializationExt")
+            ext_metadata = pkg_details(image, ext_pkg)
+            @test ext_metadata.is_precompiled
+            @test startswith(ext_metadata.ji_path, "/usr/local/share/julia-depot/compiled")
         end
     end
 end
