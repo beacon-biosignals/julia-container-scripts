@@ -22,7 +22,26 @@ const GENERATE_PROJECT_STUB = v"1.10.0" <= VERSION <= v"1.10.6" || VERSION == v"
 include("utils.jl")
 
 @testset "Docker Package Precompile" begin
-    @testset "stdlib user precompile" begin
+    # Standard libraries which aren't included in the sysimage and generate a
+    # precompilation file in the Julia depot. To see a list of these stdlibs run:
+    #
+    # ```sh
+    # docker run -it --rm julia:1.10.9 -e '
+    #      using Pkg
+    #      stdlib_dir = joinpath(Sys.BINDIR, "..", "share", "julia", "stdlib", "v$(VERSION.major).$(VERSION.minor)")
+    #      stdlibs = Base.identify_package.(readdir(stdlib_dir))
+    #      # stdlibs = [Base.PkgId(uuid, name) for (uuid, (name, version)) in Pkg.Types.stdlibs()]
+    #      Pkg.add([pkg.name for pkg in stdlibs])
+    #      for pkg in stdlibs
+    #         ji_paths = Base.find_all_in_cache_path(pkg)
+    #         if !Base.in_sysimage(pkg) && all(startswith(DEPOT_PATH[1]), ji_paths)
+    #             project = Pkg.Types.read_project(joinpath(Sys.STDLIB, pkg.name, "Project.toml"))
+    #             println("$(pkg.name) ($(pkg.uuid))")
+    #             println("  Precompile files:", join(map(x -> "\n    - $x", ji_paths), ""))
+    #             println("  Dependencies:", join(map(x -> "\n    - $x", sort!(collect(keys(project.deps)))), ""))
+    #         end
+    #     end'
+    VERSION <= v"1.12.3" && @testset "stdlib user precompile" begin
         with_cache_mount(; id_prefix="julia-depot-stdlib-user-precompile-") do depot_cache_id
             @test length(get_cached_ji_files(depot_cache_id)) == 0
 
@@ -67,15 +86,24 @@ include("utils.jl")
     end
 
     # Standard libraries which aren't included in the sysimage and do not generate a
-    # precompilation file in the Julia depot. To see which stdlibs use bundled
-    # precompilation files you can run:
-    # ```
-    # docker run -it --rm julia:1.10.4 -e '
-    #     using Pkg
-    #     stdlib_dir = joinpath(Sys.BINDIR, "..", "share", "julia", "stdlib", "v$(VERSION.major).$(VERSION.minor)")
-    #     stdlibs = Base.identify_package.(readdir(stdlib_dir))
-    #     Pkg.add([stdlib.name for stdlib in stdlibs])
-    #     println.(filter(stdlib -> !Base.in_sysimage(stdlib) && !any(startswith(DEPOT_PATH[1]), Base.find_all_in_cache_path(stdlib)), stdlibs))'
+    # precompilation file in the Julia depot. To see a list of these stdlibs run:
+    #
+    # ```sh
+    # docker run -it --rm julia:1.10.9 -e '
+    #      using Pkg
+    #      stdlib_dir = joinpath(Sys.BINDIR, "..", "share", "julia", "stdlib", "v$(VERSION.major).$(VERSION.minor)")
+    #      stdlibs = Base.identify_package.(readdir(stdlib_dir))
+    #      # stdlibs = [Base.PkgId(uuid, name) for (uuid, (name, version)) in Pkg.Types.stdlibs()]
+    #      Pkg.add([pkg.name for pkg in stdlibs])
+    #      for pkg in stdlibs
+    #         ji_paths = Base.find_all_in_cache_path(pkg)
+    #         if !Base.in_sysimage(pkg) && all(!startswith(DEPOT_PATH[1]), ji_paths)
+    #             project = Pkg.Types.read_project(joinpath(Sys.STDLIB, pkg.name, "Project.toml"))
+    #             println("$(pkg.name) ($(pkg.uuid))")
+    #             println("  Precompile files:", join(map(x -> "\n    - $x", ji_paths), ""))
+    #             println("  Dependencies:", join(map(x -> "\n    - $x", sort!(collect(keys(project.deps)))), ""))
+    #         end
+    #     end'
     # ```
     @testset "stdlib with bundled precompile" begin
         with_cache_mount(; id_prefix="julia-depot-stdlib-bundled-precompile-") do depot_cache_id
