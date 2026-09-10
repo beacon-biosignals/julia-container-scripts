@@ -70,18 +70,15 @@ function generate_path_tracked_stubs(env::Pkg.Types.EnvCache)
 end
 
 function parse_args(args)
-    generate_project_stub = nothing
+    # Default to generating the project stub on Julia 1.10.0 - 1.10.6 and 1.11.0 as this is
+    # needed to instantiate a named Julia project.
+    generate_project_stub = v"1.10.0" <= VERSION <= v"1.10.6" || VERSION == v"1.11.0"
+
     for arg in args
         m = match(r"^--generate-project-stub=(yes|no)$", arg)
         if m !== nothing
             generate_project_stub = m[1] == "yes"
         end
-    end
-
-    # Julia 1.10.0 - 1.10.6 and 1.11.0 require the root stub to be present when
-    # instantiating a named Julia project.
-    if generate_project_stub === nothing
-        generate_project_stub = v"1.10.0" <= VERSION <= v"1.10.6" || VERSION == v"1.11.0"
     end
 
     return (; generate_project_stub)
