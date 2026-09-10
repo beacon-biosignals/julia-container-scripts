@@ -53,16 +53,27 @@ have been copied into a Docker image. Doing this makes better use of Docker laye
 as most dependencies can be installed/precompiled before we copy in `src`/`ext` content.
 """
 function generate_path_tracked_stubs(env::Pkg.Types.EnvCache)
-    manifest = env.manifest
     paths = String[]
-    for (uuid, dep) in pairs(Pkg.dependencies(env))
-        dep.is_tracking_path || continue
 
-        path = generate_module_stub(joinpath(dep.source, "src", "$(dep.name).jl"), dep.name)
+    # Avoid using `Pkg.dependencies` here since this builds a full `PackageInfo` for each
+    # dependendency (not just path-tracked ones), which requires each of them to be
+    # downloaded and resolvable on disk. As this point in the Docker build, before
+    # `Pkg.instantiate` has run, that may not be true and may require access to private
+    # registries.
+    for (uuid, entry) in env.manifest
+        entry.path === nothing && continue
+
+        pkg_dir = if isabspath(entry.path)
+            entry.path
+        else
+            joinpath(dirname(env.manifest_file), entry.path)
+        end
+
+        path = generate_module_stub(joinpath(pkg_dir, "src", "$(entry.name).jl"), entry.name)
         path !== nothing && push!(paths, path)
 
-        for ext in keys(manifest[uuid].exts)
-            path = generate_module_stub(joinpath(dep.source, "ext", "$ext.jl"), ext)
+        for ext in keys(entry.exts)
+            path = generate_module_stub(joinpath(pkg_dir, "ext", "$ext.jl"), ext)
             path !== nothing && push!(paths, path)
         end
     end
