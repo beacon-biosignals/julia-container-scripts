@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 ARG JULIA_VERSION=1.11.0
 FROM julia:${JULIA_VERSION}-bookworm AS julia-base
 
@@ -53,9 +55,13 @@ COPY Project.toml *Manifest.toml ${JULIA_PROJECT}/
 # required to instantiate a named project on Julia 1.10.0 - 1.10.6 and 1.11.0) and for
 # Manifest dependencies tracked via a local path which are not yet present on disk (e.g.
 # before real source has been copied in).
+#
+# Disable network access (`--network=none`) to ensure that package credentials are not
+# required (would require `--mount=type=secret,...`) by `gen-pkg-stubs.jl`.
 ARG GENERATE_STUBS="false"
 COPY gen-pkg-stubs.jl /usr/local/bin
-RUN if [ "$GENERATE_STUBS" = "true" ]; then \
+RUN --network=none \
+    if [ "$GENERATE_STUBS" = "true" ]; then \
         gen-pkg-stubs.jl; \
     fi
 
