@@ -80,27 +80,13 @@ function generate_path_tracked_stubs(env::Pkg.Types.EnvCache)
     return paths
 end
 
-function parse_args(args)
-    # Default to generating the project stub on Julia 1.10.0 - 1.10.6 and 1.11.0 as this is
-    # needed to instantiate a named Julia project.
-    generate_project_stub = v"1.10.0" <= VERSION <= v"1.10.6" || VERSION == v"1.11.0"
-
-    for arg in args
-        m = match(r"^--generate-project-stub=(yes|no)$", arg)
-        if m !== nothing
-            generate_project_stub = m[1] == "yes"
-        end
-    end
-
-    return (; generate_project_stub)
-end
-
 function main()
     env = Pkg.Types.EnvCache()
     stub_paths = String[]
 
-    flag = parse_args(ARGS)
-    if flag.generate_project_stub
+    # Generating a project stub only on Julia 1.10.0 - 1.10.6 and 1.11.0 as this is
+    # needed to instantiate a named Julia project.
+    if v"1.10.0" <= VERSION <= v"1.10.6" || VERSION == v"1.11.0"
         @info "Generating project stub..."
         project_stub_path = generate_project_stub(env)
         project_stub_path !== nothing && push!(stub_paths, project_stub_path)
