@@ -121,7 +121,7 @@ function pkg_details(image::AbstractString, pkg::Base.PkgId)
         using UUIDs: UUID
         pkg = Base.PkgId($(pkg.uuid), $(pkg.name))
         ji_path = if VERSION >= v"1.13"
-            Base.compilecache_freshest_path(pkg)
+            Base.compilecache_path(pkg, "")
         elseif VERSION >= v"1.11"
             Base.compilecache_path(pkg)
         else
