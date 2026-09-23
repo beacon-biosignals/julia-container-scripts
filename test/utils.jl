@@ -120,7 +120,9 @@ function pkg_details(image::AbstractString, pkg::Base.PkgId)
         using Pkg: Pkg
         using UUIDs: UUID
         pkg = Base.PkgId($(pkg.uuid), $(pkg.name))
-        ji_path = if VERSION >= v"1.11"
+
+        # Determine the location of the package's `.ji` file in the image (if it exists)
+        ji_path = if v"1.11" <= VERSION < v"1.13"
             Base.compilecache_path(pkg)
         else
             paths = Base.find_all_in_cache_path(pkg)

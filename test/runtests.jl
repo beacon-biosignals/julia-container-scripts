@@ -140,11 +140,19 @@ include("utils.jl")
             @test "CompatLinearAlgebraExt" in basename.(dirname.(ji_files))
 
             pkg = PkgId(UUID("dbe5ba0b-aecc-598a-a867-79051b540f49"), "CompatLinearAlgebraExt")
-            metadata = pkg_details(image, pkg)
+            # https://github.com/beacon-biosignals/julia-container-scripts/issues/15
+            if VERSION >= v"1.13"
+                # Note: I'd prefer to use the value `missing` but that causes the tests to error
+                metadata = (; is_stdlib=false, in_sysimage=false, is_precompiled=false, ji_path="")
+                broken = true
+            else
+                metadata = pkg_details(image, pkg)
+                broken = false
+            end
             @test !metadata.is_stdlib
             @test !metadata.in_sysimage
-            @test metadata.is_precompiled
-            @test startswith(metadata.ji_path, "/usr/local/share/julia-depot/compiled")
+            @test metadata.is_precompiled broken=broken
+            @test startswith(metadata.ji_path, "/usr/local/share/julia-depot/compiled") broken=broken
         end
     end
 

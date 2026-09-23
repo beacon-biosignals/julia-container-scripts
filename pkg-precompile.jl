@@ -41,9 +41,12 @@ using Dates: Dates, DateTime, @dateformat_str
 using Pkg: Pkg, PackageSpec
 using SHA: sha256
 
-# https://github.com/JuliaLang/julia/pull/53906 (e9d25ca09382b0f67a4c7770cba08bff3db3cb38)
-if VERSION >= v"1.11.0-alpha1.76"
-    compilecache_path = Base.compilecache_path
+if VERSION >= v"1.13.0-DEV.1253"
+    # https://github.com/JuliaLang/julia/pull/59670 (f362f47338de099cdeeb1b2d81b3ec1948443274)
+    const compilecache_path = Base.compilecache_freshest_path
+elseif VERSION >= v"1.11.0-alpha1.76"
+    # https://github.com/JuliaLang/julia/pull/53906 (e9d25ca09382b0f67a4c7770cba08bff3db3cb38)
+    const compilecache_path = Base.compilecache_path
 else
     using Base: StaleCacheKey, find_all_in_cache_path, stale_cachefile
 
