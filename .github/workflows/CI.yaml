@@ -22,7 +22,7 @@ jobs:
     outputs:
       json: ${{ steps.julia-version.outputs.resolved-json }}
     steps:
-      - uses: actions/checkout@v4 # Needed for "min" to access the Project.toml
+      - uses: actions/checkout@v7 # Needed for "min" to access the Project.toml
       - uses: julia-actions/julia-version@v0.1.0
         id: julia-version
         with:
@@ -34,7 +34,8 @@ jobs:
             - 1.11    # Latest 1.11 release 
             - 1.12.0  # Earliest 1.12 release
             - 1.12    # Latest 1.12 release
-            # - 1.13-nightly  # No corresponding Docker image currently exists (2025-11-06)
+            - 1.13.0  # Earliest 1.13 release
+            - 1.13    # Latest 1.13 release
           project: test
           if-missing: error
 
@@ -54,11 +55,11 @@ jobs:
         os:
           - ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v2
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
         with:
           version: ${{ matrix.version }}
-      - uses: julia-actions/cache@v1
+      - uses: julia-actions/cache@v3
       - name: Instantiate
         shell: julia --color=yes --project=test {0}
         run: |
