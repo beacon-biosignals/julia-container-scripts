@@ -2,9 +2,17 @@
 
 Provides useful scripts for creating Julia container images.
 
+## `gen-pkg-stubs.jl`
+
+Generates empty "stub" modules (`module $name end`) for Julia packages required to be present in order to instantiate a project, but have not been included in the build context. Creating these stubs allows the majority of Julia dependencies to be installed before source code has been copied in allowing for better use of Docker layer caching and improving build times when only source code has changed.
+
 ## `pkg-precompile.jl`
 
-The `pkg-precompile.jl` script supports creating Julia precompilation cache (`.ji`) files in a [build container cache mount](https://docs.docker.com/reference/dockerfile/#run---mounttypecache). By utilizing the build cache mount we can reuse precompilation files between builds which signficantly improves reduces Docker build times. A complete `Dockerfile` example can be seen below:
+The `pkg-precompile.jl` script supports creating Julia precompilation cache (`.ji`) files in a [build container cache mount](https://docs.docker.com/reference/dockerfile/#run---mounttypecache). By utilizing the build cache mount we can reuse precompilation files between builds which signficantly improves reduces Docker build times.
+
+## Example
+
+A complete example making use of both `gen-pkg-stubs.jl` and `pkg-precompile.jl`:
 
 ```Dockerfile
 ARG JULIA_VERSION=1.11.4
@@ -20,15 +28,16 @@ RUN julia --color=yes -e 'using Pkg; Pkg.Registry.add("General")'
 ENV JULIA_PROJECT="/project"
 COPY Project.toml *Manifest.toml ${JULIA_PROJECT}/
 
-# TODO: Delete this optional statement if your Project.toml does not include the field
-# "name" or you don't care about supporting the Julia versions listed below.
+# TODO: Delete this optional statement you do not want to support packages added
+# `Pkg.develop` and your Project.toml does not include the "name" field.
 #
-# Julia 1.10.0 - 1.10.6 and 1.11.0 require this source file to be present when
-# instantiating a named Julia project.
-RUN curl -fsSLO https://raw.githubusercontent.com/beacon-biosignals/julia-container-scripts/refs/tags/v0.1/gen-pkg-src.jl && \
-    chmod +x gen-pkg-src.jl && \
-    ./gen-pkg-src.jl && \
-    rm gen-pkg-src.jl
+# Generate stub source files for Manifest dependencies added via `Pkg.develop` to allow
+# `Pkg.instantiate` to work. The real source code is copied later to reduce Docker layer
+# invalidation.
+RUN curl -fsSLO https://raw.githubusercontent.com/beacon-biosignals/julia-container-scripts/refs/tags/v0.3/gen-pkg-stubs.jl && \
+    chmod +x gen-pkg-stubs.jl && \
+    ./gen-pkg-stubs.jl && \
+    rm gen-pkg-stubs.jl
 
 # Instantiate the Julia project environment and avoid precompiling. Ensure we perform a
 # registry update here as changes to the Project.toml/Manifest.toml do not invalidate the
@@ -36,7 +45,7 @@ RUN curl -fsSLO https://raw.githubusercontent.com/beacon-biosignals/julia-contai
 RUN julia --color=yes -e 'using Pkg; Pkg.Registry.update(); Pkg.instantiate(); Pkg.build()'
 
 # TODO: Delete this optional statement if you don't care about Julia 1.10 support or combine
-# this statement with instantiate above to avoid bloating image size.
+# this statement with instantiate above if you prefer.
 #
 # Use a fixed modification time for all files in "packages" to avoid unnecessary precompile
 # cache invalidation on Julia 1.10.
@@ -45,7 +54,7 @@ RUN julia -e 'VERSION < v"1.11" || exit(1)' && \
 
 # Precompile project dependencies using a Docker cache mount which persists between builds.
 RUN --mount=type=cache,id=julia-depot,sharing=shared,target=/mnt/julia-depot \
-    curl -fsSLO https://raw.githubusercontent.com/beacon-biosignals/julia-container-scripts/refs/tags/v0.1/pkg-precompile.jl && \
+    curl -fsSLO https://raw.githubusercontent.com/beacon-biosignals/julia-container-scripts/refs/tags/v0.3/pkg-precompile.jl && \
     chmod +x pkg-precompile.jl && \
     ./pkg-precompile.jl "/mnt/julia-depot" && \
     rm pkg-precompile.jl

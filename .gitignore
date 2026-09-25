@@ -1,2 +1,6 @@
 test/Manifest.toml
 test/*/Manifest.toml
+
+# Ignore leftover hardlinks
+test/*/gen-pkg-stubs.jl
+test/*/pkg-precompile.jl
