@@ -28,7 +28,7 @@ RUN julia --color=yes -e 'using Pkg; Pkg.Registry.add("General")'
 ENV JULIA_PROJECT="/project"
 COPY Project.toml *Manifest.toml ${JULIA_PROJECT}/
 
-# TODO: Delete this optional statement you do not want to support packages added
+# TODO: Delete this optional statement if you do not want to support packages added
 # `Pkg.develop` and your Project.toml does not include the "name" field.
 #
 # Generate stub source files for Manifest dependencies added via `Pkg.develop` to allow
